@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build for simulator
+        run: >-
+          xcodebuild
+          -project SecondClock.xcodeproj
+          -scheme SecondClock
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build
