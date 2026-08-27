@@ -1,12 +1,13 @@
 import SwiftUI
+import WidgetKit
 
 struct ClockBackgroundView: View {
     let preferences: ClockPreferences
-    let backgroundImage: UIImage?
+    let loadsWidgetSizedPhoto: Bool
 
-    init(preferences: ClockPreferences, backgroundImage: UIImage? = nil) {
+    init(preferences: ClockPreferences, loadsWidgetSizedPhoto: Bool = false) {
         self.preferences = preferences
-        self.backgroundImage = backgroundImage
+        self.loadsWidgetSizedPhoto = loadsWidgetSizedPhoto
     }
 
     var body: some View {
@@ -28,9 +29,13 @@ struct ClockBackgroundView: View {
             )
 
         case .photo:
-            if let image = backgroundImage ?? SharedClockStorage.loadBackgroundImage() {
+            if let image = loadsWidgetSizedPhoto
+                ? SharedClockStorage.loadWidgetBackgroundImage()
+                : SharedClockStorage.loadBackgroundImage()
+            {
                 Image(uiImage: image)
                     .resizable()
+                    .preservingFullColorInWidgets()
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
@@ -47,6 +52,17 @@ struct ClockBackgroundView: View {
                     endPoint: .bottomTrailing
                 )
             }
+        }
+    }
+}
+
+private extension Image {
+    @ViewBuilder
+    func preservingFullColorInWidgets() -> some View {
+        if #available(iOS 18.0, *) {
+            widgetAccentedRenderingMode(.fullColor)
+        } else {
+            self
         }
     }
 }

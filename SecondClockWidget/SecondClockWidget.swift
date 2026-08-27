@@ -1,23 +1,22 @@
 import SwiftUI
-import UIKit
 import WidgetKit
 
 struct ClockTimelineEntry: TimelineEntry {
     let date: Date
     let startOfDay: Date
     let preferences: ClockPreferences
-    let backgroundImage: UIImage?
+    let backgroundImageRevision: Date?
 
     init(
         date: Date,
         startOfDay: Date,
         preferences: ClockPreferences,
-        backgroundImage: UIImage? = nil
+        backgroundImageRevision: Date? = nil
     ) {
         self.date = date
         self.startOfDay = startOfDay
         self.preferences = preferences
-        self.backgroundImage = backgroundImage
+        self.backgroundImageRevision = backgroundImageRevision
     }
 }
 
@@ -42,7 +41,7 @@ struct SecondClockTimelineProvider: TimelineProvider {
                 date: now,
                 startOfDay: Calendar.current.startOfDay(for: now),
                 preferences: preferences,
-                backgroundImage: backgroundImage(for: preferences)
+                backgroundImageRevision: backgroundImageRevision(for: preferences)
             )
         )
     }
@@ -55,14 +54,14 @@ struct SecondClockTimelineProvider: TimelineProvider {
         let now = Date()
         let today = calendar.startOfDay(for: now)
         let preferences = SharedClockStorage.loadPreferences()
-        let backgroundImage = backgroundImage(for: preferences)
+        let backgroundImageRevision = backgroundImageRevision(for: preferences)
 
         var entries = [
             ClockTimelineEntry(
                 date: now,
                 startOfDay: today,
                 preferences: preferences,
-                backgroundImage: backgroundImage
+                backgroundImageRevision: backgroundImageRevision
             )
         ]
 
@@ -75,7 +74,7 @@ struct SecondClockTimelineProvider: TimelineProvider {
                     date: dayStart,
                     startOfDay: dayStart,
                     preferences: preferences,
-                    backgroundImage: backgroundImage
+                    backgroundImageRevision: backgroundImageRevision
                 )
             )
         }
@@ -83,9 +82,9 @@ struct SecondClockTimelineProvider: TimelineProvider {
         completion(Timeline(entries: entries, policy: .atEnd))
     }
 
-    private func backgroundImage(for preferences: ClockPreferences) -> UIImage? {
+    private func backgroundImageRevision(for preferences: ClockPreferences) -> Date? {
         guard preferences.backgroundStyle == .photo else { return nil }
-        return SharedClockStorage.loadBackgroundImage()
+        return SharedClockStorage.backgroundImageModificationDate
     }
 }
 
@@ -154,8 +153,9 @@ struct SecondClockWidgetView: View {
             } else {
                 ClockBackgroundView(
                     preferences: entry.preferences,
-                    backgroundImage: entry.backgroundImage
+                    loadsWidgetSizedPhoto: true
                 )
+                .id(entry.backgroundImageRevision)
             }
         }
     }

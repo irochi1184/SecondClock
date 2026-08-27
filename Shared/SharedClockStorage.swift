@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UIKit
 
 enum SharedClockStorage {
@@ -50,6 +51,36 @@ enum SharedClockStorage {
     static func loadBackgroundImage() -> UIImage? {
         guard let url = backgroundImageURL else { return nil }
         return UIImage(contentsOfFile: url.path)
+    }
+
+    static var backgroundImageModificationDate: Date? {
+        guard let url = backgroundImageURL else { return nil }
+        return try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate
+    }
+
+    static func loadWidgetBackgroundImage() -> UIImage? {
+        guard let url = backgroundImageURL,
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil)
+        else {
+            return nil
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1_024
+        ]
+
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else {
+            return nil
+        }
+
+        return UIImage(cgImage: image)
     }
 
     static func removeBackgroundImage() {
