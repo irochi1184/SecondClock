@@ -1,10 +1,24 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 
 struct ClockTimelineEntry: TimelineEntry {
     let date: Date
     let startOfDay: Date
     let preferences: ClockPreferences
+    let backgroundImage: UIImage?
+
+    init(
+        date: Date,
+        startOfDay: Date,
+        preferences: ClockPreferences,
+        backgroundImage: UIImage? = nil
+    ) {
+        self.date = date
+        self.startOfDay = startOfDay
+        self.preferences = preferences
+        self.backgroundImage = backgroundImage
+    }
 }
 
 struct SecondClockTimelineProvider: TimelineProvider {
@@ -22,11 +36,13 @@ struct SecondClockTimelineProvider: TimelineProvider {
         completion: @escaping (ClockTimelineEntry) -> Void
     ) {
         let now = Date()
+        let preferences = SharedClockStorage.loadPreferences()
         completion(
             ClockTimelineEntry(
                 date: now,
                 startOfDay: Calendar.current.startOfDay(for: now),
-                preferences: SharedClockStorage.loadPreferences()
+                preferences: preferences,
+                backgroundImage: backgroundImage(for: preferences)
             )
         )
     }
@@ -39,12 +55,14 @@ struct SecondClockTimelineProvider: TimelineProvider {
         let now = Date()
         let today = calendar.startOfDay(for: now)
         let preferences = SharedClockStorage.loadPreferences()
+        let backgroundImage = backgroundImage(for: preferences)
 
         var entries = [
             ClockTimelineEntry(
                 date: now,
                 startOfDay: today,
-                preferences: preferences
+                preferences: preferences,
+                backgroundImage: backgroundImage
             )
         ]
 
@@ -56,12 +74,18 @@ struct SecondClockTimelineProvider: TimelineProvider {
                 ClockTimelineEntry(
                     date: dayStart,
                     startOfDay: dayStart,
-                    preferences: preferences
+                    preferences: preferences,
+                    backgroundImage: backgroundImage
                 )
             )
         }
 
         completion(Timeline(entries: entries, policy: .atEnd))
+    }
+
+    private func backgroundImage(for preferences: ClockPreferences) -> UIImage? {
+        guard preferences.backgroundStyle == .photo else { return nil }
+        return SharedClockStorage.loadBackgroundImage()
     }
 }
 
@@ -82,7 +106,7 @@ struct SecondClockWidgetView: View {
     }
 
     var body: some View {
-        VStack(spacing: isAccessory ? 1 : 6) {
+        VStack(alignment: .center, spacing: isAccessory ? 1 : 6) {
             if entry.preferences.showDate {
                 Text(
                     entry.date,
@@ -97,6 +121,8 @@ struct SecondClockWidgetView: View {
                         design: entry.preferences.fontDesign.swiftUIFontDesign
                     )
                 )
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .lineLimit(1)
             }
 
@@ -109,6 +135,8 @@ struct SecondClockWidgetView: View {
                     )
                 )
                 .monospacedDigit()
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
         }
@@ -124,7 +152,10 @@ struct SecondClockWidgetView: View {
             if isAccessory {
                 Color.clear
             } else {
-                ClockBackgroundView(preferences: entry.preferences)
+                ClockBackgroundView(
+                    preferences: entry.preferences,
+                    backgroundImage: entry.backgroundImage
+                )
             }
         }
     }
@@ -140,7 +171,7 @@ struct SecondClockWidget: Widget {
         .configurationDisplayName("秒まで見える時計")
         .description("現在時刻を24時間形式で秒まで表示します。")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
-        .containerBackgroundRemovable(true)
+        .containerBackgroundRemovable(false)
         .contentMarginsDisabled()
     }
 }

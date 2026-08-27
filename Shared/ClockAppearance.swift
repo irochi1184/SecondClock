@@ -2,6 +2,12 @@ import SwiftUI
 
 struct ClockBackgroundView: View {
     let preferences: ClockPreferences
+    let backgroundImage: UIImage?
+
+    init(preferences: ClockPreferences, backgroundImage: UIImage? = nil) {
+        self.preferences = preferences
+        self.backgroundImage = backgroundImage
+    }
 
     var body: some View {
         switch preferences.backgroundStyle {
@@ -22,10 +28,12 @@ struct ClockBackgroundView: View {
             )
 
         case .photo:
-            if let image = SharedClockStorage.loadBackgroundImage() {
+            if let image = backgroundImage ?? SharedClockStorage.loadBackgroundImage() {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                     .overlay {
                         Color.black.opacity(preferences.photoDimming)
                     }
