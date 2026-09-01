@@ -266,3 +266,35 @@ struct ClockPreferences: Codable, Equatable {
         try values.encode(photoDimming, forKey: .photoDimming)
     }
 }
+
+struct ClockPreset: Codable, Equatable, Identifiable {
+    var id: UUID
+    var name: String
+    var preferences: ClockPreferences
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        preferences: ClockPreferences
+    ) {
+        self.id = id
+        self.name = name
+        self.preferences = preferences
+    }
+}
+
+struct ClockPresetCollection: Codable, Equatable {
+    var presets: [ClockPreset]
+    var activePresetID: UUID
+
+    static func initial(preferences: ClockPreferences) -> ClockPresetCollection {
+        let preset = ClockPreset(name: "プリセット 1", preferences: preferences)
+        return ClockPresetCollection(presets: [preset], activePresetID: preset.id)
+    }
+
+    var activePreferences: ClockPreferences {
+        presets.first(where: { $0.id == activePresetID })?.preferences
+            ?? presets.first?.preferences
+            ?? .default
+    }
+}

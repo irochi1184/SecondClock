@@ -9,6 +9,14 @@ enum ClockAccessLevel: Equatable {
     }
 }
 
+enum ClockPresetAccessPolicy {
+    static let freeLimit = 3
+
+    static func canCreatePreset(currentCount: Int, isProUnlocked: Bool) -> Bool {
+        isProUnlocked || currentCount < freeLimit
+    }
+}
+
 extension ClockFontDesign {
     var requiresPro: Bool {
         false

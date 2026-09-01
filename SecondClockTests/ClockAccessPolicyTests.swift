@@ -98,6 +98,68 @@ final class ClockAccessPolicyTests: XCTestCase {
         XCTAssertTrue(ClockThemePreset.nightSky.requiresPro)
     }
 
+    func testFreePresetLimitAndUnlimitedProAccess() {
+        XCTAssertTrue(
+            ClockPresetAccessPolicy.canCreatePreset(
+                currentCount: 2,
+                isProUnlocked: false
+            )
+        )
+        XCTAssertFalse(
+            ClockPresetAccessPolicy.canCreatePreset(
+                currentCount: 3,
+                isProUnlocked: false
+            )
+        )
+        XCTAssertTrue(
+            ClockPresetAccessPolicy.canCreatePreset(
+                currentCount: 100,
+                isProUnlocked: true
+            )
+        )
+    }
+
+    func testPresetCollectionUsesSelectedPreferences() throws {
+        var firstPreferences = ClockPreferences.default
+        firstPreferences.displaySize = .small
+        var secondPreferences = ClockPreferences.default
+        secondPreferences.displaySize = .large
+
+        let first = ClockPreset(name: "プリセット 1", preferences: firstPreferences)
+        let second = ClockPreset(name: "プリセット 2", preferences: secondPreferences)
+        let collection = ClockPresetCollection(
+            presets: [first, second],
+            activePresetID: second.id
+        )
+
+        XCTAssertEqual(collection.activePreferences.displaySize, .large)
+
+        let data = try JSONEncoder().encode(collection)
+        let decoded = try JSONDecoder().decode(ClockPresetCollection.self, from: data)
+        XCTAssertEqual(decoded, collection)
+    }
+
+    @MainActor
+    func testPresetStoreCapsFreeCreationAndUpdatesSharedPreferences() {
+        let store = ClockSettingsStore()
+        store.restoreDefaults()
+        let firstPresetID = store.activePresetID
+        store.preferences.displaySize = .small
+
+        XCTAssertTrue(store.addPreset(isProUnlocked: false))
+        XCTAssertTrue(store.addPreset(isProUnlocked: false))
+        XCTAssertFalse(store.addPreset(isProUnlocked: false))
+        XCTAssertEqual(store.presets.count, ClockPresetAccessPolicy.freeLimit)
+
+        store.preferences.displaySize = .large
+        XCTAssertTrue(store.selectAdjacentPreset(forward: true))
+        XCTAssertEqual(store.activePresetID, firstPresetID)
+        XCTAssertEqual(store.preferences.displaySize, .small)
+        XCTAssertEqual(SharedClockStorage.loadPreferences(), store.preferences)
+
+        store.restoreDefaults()
+    }
+
     @MainActor
     func testStoreKitConfigurationProvidesLifetimeProProduct() async throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

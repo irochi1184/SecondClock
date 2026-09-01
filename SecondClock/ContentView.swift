@@ -6,6 +6,8 @@ struct ContentView: View {
     @EnvironmentObject private var settingsStore: ClockSettingsStore
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var showsSettings = false
+    @State private var presetFeedbackName: String?
+    @State private var presetFeedbackToken = UUID()
 
     private var effectivePreferences: ClockPreferences {
         settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
@@ -15,9 +17,11 @@ struct ContentView: View {
         ZStack {
             ClockBackgroundView(preferences: effectivePreferences)
                 .id(settingsStore.backgroundImageRevision)
+                .id(settingsStore.activePresetID)
                 .ignoresSafeArea()
 
             FullScreenClockView(preferences: effectivePreferences)
+                .id(settingsStore.activePresetID)
 
             VStack {
                 HStack {
@@ -46,8 +50,15 @@ struct ContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
+
+            if settingsStore.presets.count > 1 {
+                presetIndicator
+            }
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(presetSwipeGesture)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.22), value: settingsStore.activePresetID)
         .statusBarHidden(!showsSettings)
         .persistentSystemOverlays(showsSettings ? .visible : .hidden)
         .sheet(isPresented: $showsSettings) {
@@ -59,6 +70,88 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task { await purchaseManager.start() }
+        }
+    }
+
+    private var presetIndicator: some View {
+        VStack(spacing: 8) {
+            if let presetFeedbackName {
+                Text(presetFeedbackName)
+                    .font(.caption.weight(.semibold))
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+
+            Group {
+                if settingsStore.presets.count <= 8 {
+                    HStack(spacing: 7) {
+                        ForEach(settingsStore.presets) { preset in
+                            Circle()
+                                .fill(
+                                    preset.id == settingsStore.activePresetID
+                                        ? Color.primary
+                                        : Color.primary.opacity(0.3)
+                                )
+                                .frame(width: 7, height: 7)
+                        }
+                    }
+                } else {
+                    Text("\(activePresetIndex + 1) / \(settingsStore.presets.count)")
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .foregroundStyle(effectivePreferences.textColor.color)
+        .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 18)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(settingsStore.activePresetName)、\(activePresetIndex + 1)個目、全\(settingsStore.presets.count)個"
+        )
+    }
+
+    private var activePresetIndex: Int {
+        settingsStore.presets.firstIndex(where: {
+            $0.id == settingsStore.activePresetID
+        }) ?? 0
+    }
+
+    private var presetSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 35)
+            .onEnded { value in
+                guard !showsSettings,
+                      abs(value.translation.width) > abs(value.translation.height),
+                      abs(value.translation.width) >= 60
+                else {
+                    return
+                }
+
+                let didChange = settingsStore.selectAdjacentPreset(
+                    forward: value.translation.width < 0
+                )
+                guard didChange else { return }
+                showPresetFeedback()
+            }
+    }
+
+    private func showPresetFeedback() {
+        let token = UUID()
+        presetFeedbackToken = token
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            presetFeedbackName = settingsStore.activePresetName
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard presetFeedbackToken == token else { return }
+            withAnimation(.easeIn(duration: 0.18)) {
+                presetFeedbackName = nil
+            }
         }
     }
 }
@@ -141,6 +234,7 @@ struct ClockSettingsView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var errorMessage: String?
     @State private var showsResetConfirmation = false
+    @State private var showsPresetDeleteConfirmation = false
     @State private var showsPaywall = false
 
     private var effectivePreferences: ClockPreferences {
@@ -157,6 +251,8 @@ struct ClockSettingsView: View {
                     )
 
                     proStatusCard
+
+                    presetSection
 
                     if shouldShowAppGroupWarning {
                         AppGroupWarning()
@@ -203,6 +299,16 @@ struct ClockSettingsView: View {
                 }
                 Button("キャンセル", role: .cancel) {}
             }
+            .confirmationDialog(
+                "「\(settingsStore.activePresetName)」を削除しますか？",
+                isPresented: $showsPresetDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("プリセットを削除", role: .destructive) {
+                    settingsStore.deleteActivePreset()
+                }
+                Button("キャンセル", role: .cancel) {}
+            }
             .sheet(isPresented: $showsPaywall) {
                 ProPaywallView()
                     .environmentObject(purchaseManager)
@@ -235,6 +341,62 @@ struct ClockSettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var presetSection: some View {
+        SettingsCard(title: "プリセット") {
+            Picker("使用中", selection: activePresetBinding) {
+                ForEach(settingsStore.presets) { preset in
+                    Text(preset.name).tag(preset.id)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Button {
+                if !settingsStore.addPreset(
+                    isProUnlocked: purchaseManager.isProUnlocked
+                ) {
+                    showsPaywall = true
+                }
+            } label: {
+                Label("現在の設定を複製して追加", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if settingsStore.presets.count > 1 {
+                Button(role: .destructive) {
+                    showsPresetDeleteConfirmation = true
+                } label: {
+                    Label("使用中のプリセットを削除", systemImage: "trash")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            Text(presetLimitDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("時計画面を左右にスワイプして切り替えられます。選択内容はウィジェットにも反映されます。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var activePresetBinding: Binding<UUID> {
+        Binding(
+            get: { settingsStore.activePresetID },
+            set: { settingsStore.selectPreset(id: $0) }
+        )
+    }
+
+    private var presetLimitDescription: String {
+        if purchaseManager.isProUnlocked {
+            "Pro版：プリセット数は無制限（現在\(settingsStore.presets.count)件）"
+        } else {
+            "無料版：最大\(ClockPresetAccessPolicy.freeLimit)件（現在\(settingsStore.presets.count)件）"
         }
     }
 
@@ -434,7 +596,7 @@ struct ClockSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SecondClock Pro")
                                 .font(.headline)
-                            Text("写真背景・限定テーマ・グラデーション種類を解放")
+                            Text("無制限プリセット・写真背景・限定デザインを解放")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)

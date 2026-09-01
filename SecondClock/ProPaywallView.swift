@@ -78,6 +78,7 @@ struct ProPaywallView: View {
 
     private var features: some View {
         VStack(alignment: .leading, spacing: 16) {
+            ProFeatureRow(icon: "square.stack.3d.up.fill", title: "プリセットを無制限に作成")
             ProFeatureRow(icon: "photo.fill", title: "写真を時計の背景に設定")
             ProFeatureRow(icon: "slider.horizontal.3", title: "背景写真の暗さを調整")
             ProFeatureRow(icon: "circle.lefthalf.filled", title: "グラデーションの種類を5種類から選択")

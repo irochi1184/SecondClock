@@ -34,7 +34,7 @@ export default function Home() {
         <article>
           <p className="featureNumber">02</p>
           <h2>空間に合わせて選べる。</h2>
-          <p>サイズ、書体、色、単色・グラデーション・写真背景を組み合わせて、自分の時計を作れます。</p>
+          <p>サイズ、書体、色、背景をプリセットとして保存。時計画面を左右にスワイプして、すぐに切り替えられます。</p>
         </article>
         <article>
           <p className="featureNumber">03</p>
@@ -48,7 +48,7 @@ export default function Home() {
           <p className="eyebrow">SECONDClock PRO</p>
           <h2>もっと自由に、買い切りで。</h2>
         </div>
-        <p>5種類のグラデーション、写真背景と暗さ調整、夕焼け・桜・夜空の限定テーマをアプリ内課金で解放できます。サブスクリプションではありません。</p>
+        <p>無制限のプリセット、5種類のグラデーション、写真背景と暗さ調整、限定テーマをアプリ内課金で解放できます。サブスクリプションではありません。</p>
       </section>
 
       <footer className="footer">

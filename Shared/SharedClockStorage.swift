@@ -7,6 +7,7 @@ enum SharedClockStorage {
     static let widgetKind = "SecondClockWidget"
 
     private static let preferencesKey = "clock.preferences.v1"
+    private static let presetCollectionKey = "clock.presets.v1"
     private static let proEntitlementCacheKey = "purchase.pro.entitlement.cache.v1"
     private static let backgroundImageName = "clock-background.jpg"
 
@@ -21,6 +22,31 @@ enum SharedClockStorage {
     }
 
     static func loadPreferences() -> ClockPreferences {
+        if let collection = decodedPresetCollection() {
+            return collection.activePreferences
+        }
+
+        return loadLegacyPreferences()
+    }
+
+    static func loadPresetCollection() -> ClockPresetCollection {
+        decodedPresetCollection()
+            ?? .initial(preferences: loadLegacyPreferences())
+    }
+
+    static func savePresetCollection(_ collection: ClockPresetCollection) {
+        guard !collection.presets.isEmpty,
+              collection.presets.contains(where: { $0.id == collection.activePresetID }),
+              let data = try? JSONEncoder().encode(collection)
+        else {
+            return
+        }
+
+        sharedDefaults.set(data, forKey: presetCollectionKey)
+        savePreferences(collection.activePreferences)
+    }
+
+    private static func loadLegacyPreferences() -> ClockPreferences {
         guard let data = sharedDefaults.data(forKey: preferencesKey),
               let preferences = try? JSONDecoder().decode(ClockPreferences.self, from: data)
         else {
@@ -28,6 +54,21 @@ enum SharedClockStorage {
         }
 
         return preferences
+    }
+
+    private static func decodedPresetCollection() -> ClockPresetCollection? {
+        guard let data = sharedDefaults.data(forKey: presetCollectionKey),
+              let collection = try? JSONDecoder().decode(
+                ClockPresetCollection.self,
+                from: data
+              ),
+              !collection.presets.isEmpty,
+              collection.presets.contains(where: { $0.id == collection.activePresetID })
+        else {
+            return nil
+        }
+
+        return collection
     }
 
     static func savePreferences(_ preferences: ClockPreferences) {
