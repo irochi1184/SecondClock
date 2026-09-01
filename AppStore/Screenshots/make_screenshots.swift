@@ -255,10 +255,10 @@ private func makeIAPReview(output: URL) {
         drawText("com.irochi.SecondClock.pro.lifetime", x: 120, top: 955, width: 820, height: 70, size: 27, weight: .medium)
         drawScreen(image("04-paywall.png"), x: 1110, top: 70, width: 500, radius: 58, border: 7)
         drawText("購入画面", x: 1710, top: 300, width: 900, height: 80, size: 62, weight: .bold)
-        drawText("写真背景・暗さ調整・限定テーマを\n一度の購入で解放します。", x: 1710, top: 430, width: 940, height: 150, size: 36, weight: .medium, color: .white.withAlphaComponent(0.78), lineSpacing: 10)
+        drawText("5種類のグラデーション・写真背景・\n限定テーマを一度の購入で解放します。", x: 1710, top: 430, width: 940, height: 150, size: 36, weight: .medium, color: .white.withAlphaComponent(0.78), lineSpacing: 10)
         drawPill("写真背景", x: 1710, top: 710, width: 300)
-        drawPill("暗さ調整", x: 2040, top: 710, width: 300)
-        drawPill("限定テーマ", x: 2370, top: 710, width: 330)
+        drawPill("5 GRADIENTS", x: 2040, top: 710, width: 360)
+        drawPill("限定テーマ", x: 2430, top: 710, width: 300)
     }
 }
 

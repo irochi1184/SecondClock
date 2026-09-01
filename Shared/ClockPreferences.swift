@@ -43,6 +43,26 @@ enum ClockDisplaySize: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ClockGradientStyle: String, Codable, CaseIterable, Identifiable {
+    case diagonalDown
+    case diagonalUp
+    case horizontal
+    case vertical
+    case radial
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .diagonalDown: "左上 → 右下"
+        case .diagonalUp: "左下 → 右上"
+        case .horizontal: "左 → 右"
+        case .vertical: "上 → 下"
+        case .radial: "中央 → 外側"
+        }
+    }
+}
+
 enum ClockFontDesign: String, Codable, CaseIterable, Identifiable {
     case rounded
     case standard
@@ -146,6 +166,7 @@ struct ClockPreferences: Codable, Equatable {
     var solidColor: RGBAColor
     var gradientStartColor: RGBAColor
     var gradientEndColor: RGBAColor
+    var gradientStyle: ClockGradientStyle
     var photoDimming: Double
 
     static let `default` = ClockPreferences(
@@ -158,6 +179,7 @@ struct ClockPreferences: Codable, Equatable {
         solidColor: .midnight,
         gradientStartColor: .indigo,
         gradientEndColor: .blue,
+        gradientStyle: .diagonalDown,
         photoDimming: 0.28
     )
 
@@ -171,6 +193,7 @@ struct ClockPreferences: Codable, Equatable {
         case solidColor
         case gradientStartColor
         case gradientEndColor
+        case gradientStyle
         case photoDimming
     }
 
@@ -184,6 +207,7 @@ struct ClockPreferences: Codable, Equatable {
         solidColor: RGBAColor,
         gradientStartColor: RGBAColor,
         gradientEndColor: RGBAColor,
+        gradientStyle: ClockGradientStyle,
         photoDimming: Double
     ) {
         self.showDate = showDate
@@ -195,6 +219,7 @@ struct ClockPreferences: Codable, Equatable {
         self.solidColor = solidColor
         self.gradientStartColor = gradientStartColor
         self.gradientEndColor = gradientEndColor
+        self.gradientStyle = gradientStyle
         self.photoDimming = photoDimming
     }
 
@@ -220,6 +245,8 @@ struct ClockPreferences: Codable, Equatable {
             ?? defaults.gradientStartColor
         gradientEndColor = try values.decodeIfPresent(RGBAColor.self, forKey: .gradientEndColor)
             ?? defaults.gradientEndColor
+        gradientStyle = try values.decodeIfPresent(ClockGradientStyle.self, forKey: .gradientStyle)
+            ?? defaults.gradientStyle
         photoDimming = try values.decodeIfPresent(Double.self, forKey: .photoDimming)
             ?? defaults.photoDimming
     }
@@ -235,6 +262,7 @@ struct ClockPreferences: Codable, Equatable {
         try values.encode(solidColor, forKey: .solidColor)
         try values.encode(gradientStartColor, forKey: .gradientStartColor)
         try values.encode(gradientEndColor, forKey: .gradientEndColor)
+        try values.encode(gradientStyle, forKey: .gradientStyle)
         try values.encode(photoDimming, forKey: .photoDimming)
     }
 }

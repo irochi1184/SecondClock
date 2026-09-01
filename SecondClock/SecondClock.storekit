@@ -10,12 +10,12 @@
       "internalID" : "692BDD38-722E-4FBC-8319-6833C0DF3D48",
       "localizations" : [
         {
-          "description" : "写真背景と限定テーマを買い切りで解放",
+          "description" : "写真背景・限定テーマ・グラデーション種類を解放",
           "displayName" : "SecondClock Pro",
           "locale" : "ja_JP"
         },
         {
-          "description" : "Unlock photo backgrounds and exclusive themes.",
+          "description" : "Unlock photos, themes, and gradient styles.",
           "displayName" : "SecondClock Pro",
           "locale" : "en_US"
         }

@@ -32,6 +32,7 @@ extension ClockPreferences {
         guard accessLevel == .free else { return self }
 
         var effective = self
+        effective.gradientStyle = .diagonalDown
 
         switch effective.backgroundStyle {
         case .system, .solid, .gradient:

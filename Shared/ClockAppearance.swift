@@ -19,14 +19,7 @@ struct ClockBackgroundView: View {
             preferences.solidColor.color
 
         case .gradient:
-            LinearGradient(
-                colors: [
-                    preferences.gradientStartColor.color,
-                    preferences.gradientEndColor.color
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            gradientBackground
 
         case .photo:
             if let image = loadsWidgetSizedPhoto
@@ -50,6 +43,34 @@ struct ClockBackgroundView: View {
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var gradientBackground: some View {
+        let colors = [
+            preferences.gradientStartColor.color,
+            preferences.gradientEndColor.color
+        ]
+
+        switch preferences.gradientStyle {
+        case .diagonalDown:
+            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .diagonalUp:
+            LinearGradient(colors: colors, startPoint: .bottomLeading, endPoint: .topTrailing)
+        case .horizontal:
+            LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+        case .vertical:
+            LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+        case .radial:
+            GeometryReader { geometry in
+                RadialGradient(
+                    colors: colors,
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: max(geometry.size.width, geometry.size.height) * 0.72
                 )
             }
         }

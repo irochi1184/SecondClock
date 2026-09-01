@@ -310,6 +310,26 @@ struct ClockSettingsView: View {
                 )
 
             case .gradient:
+                if purchaseManager.isProUnlocked {
+                    Picker(
+                        "グラデーションの種類",
+                        selection: $settingsStore.preferences.gradientStyle
+                    ) {
+                        ForEach(ClockGradientStyle.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                } else {
+                    LockedSettingButton(title: "グラデーションの種類を変更") {
+                        showsPaywall = true
+                    }
+
+                    Text("無料版では「左上 → 右下」を使用します。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
                 ColorPicker(
                     "開始色",
                     selection: colorBinding(for: \ClockPreferences.gradientStartColor),
@@ -414,7 +434,7 @@ struct ClockSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SecondClock Pro")
                                 .font(.headline)
-                            Text("写真背景と限定テーマを買い切りで解放")
+                            Text("写真背景・限定テーマ・グラデーション種類を解放")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)

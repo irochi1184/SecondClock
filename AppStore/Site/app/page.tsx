@@ -48,7 +48,7 @@ export default function Home() {
           <p className="eyebrow">SECONDClock PRO</p>
           <h2>もっと自由に、買い切りで。</h2>
         </div>
-        <p>写真背景、写真の暗さ調整、夕焼け・桜・夜空の限定テーマをアプリ内課金で解放できます。サブスクリプションではありません。</p>
+        <p>5種類のグラデーション、写真背景と暗さ調整、夕焼け・桜・夜空の限定テーマをアプリ内課金で解放できます。サブスクリプションではありません。</p>
       </section>
 
       <footer className="footer">

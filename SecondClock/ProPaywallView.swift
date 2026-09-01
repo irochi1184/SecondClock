@@ -80,6 +80,7 @@ struct ProPaywallView: View {
         VStack(alignment: .leading, spacing: 16) {
             ProFeatureRow(icon: "photo.fill", title: "写真を時計の背景に設定")
             ProFeatureRow(icon: "slider.horizontal.3", title: "背景写真の暗さを調整")
+            ProFeatureRow(icon: "circle.lefthalf.filled", title: "グラデーションの種類を5種類から選択")
             ProFeatureRow(icon: "sparkles", title: "夕焼け・桜・夜空の限定テーマ")
             ProFeatureRow(icon: "rectangle.3.group.fill", title: "ホーム画面ウィジェットにも写真背景を反映")
         }

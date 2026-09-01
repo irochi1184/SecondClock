@@ -51,12 +51,22 @@ final class ClockAccessPolicyTests: XCTestCase {
         )
     }
 
+    func testFreeAccessUsesDefaultGradientStyle() {
+        var preferences = ClockPreferences.default
+        preferences.gradientStyle = .radial
+
+        let effective = preferences.applying(accessLevel: .free)
+
+        XCTAssertEqual(effective.gradientStyle, .diagonalDown)
+    }
+
     func testProAccessPreservesEveryPreference() {
         var preferences = ClockPreferences.default
         preferences.fontDesign = .monospaced
         preferences.fontWeight = .bold
         preferences.textColor = RGBAColor(red: 0.8, green: 0.4, blue: 0.2)
         preferences.backgroundStyle = .photo
+        preferences.gradientStyle = .radial
         preferences.photoDimming = 0.6
 
         XCTAssertEqual(
