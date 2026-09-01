@@ -20,6 +20,12 @@ final class ClockSettingsStore: ObservableObject {
         SharedClockStorage.isAppGroupAvailable
     }
 
+    func effectivePreferences(isProUnlocked: Bool) -> ClockPreferences {
+        preferences.applying(
+            accessLevel: ClockAccessLevel(isProUnlocked: isProUnlocked)
+        )
+    }
+
     func saveBackgroundImage(_ originalData: Data) throws {
         let optimizedData = try PhotoBackgroundManager.optimizedJPEGData(from: originalData)
         try SharedClockStorage.saveBackgroundImageData(optimizedData)

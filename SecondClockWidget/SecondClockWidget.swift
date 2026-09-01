@@ -35,7 +35,7 @@ struct SecondClockTimelineProvider: TimelineProvider {
         completion: @escaping (ClockTimelineEntry) -> Void
     ) {
         let now = Date()
-        let preferences = SharedClockStorage.loadPreferences()
+        let preferences = SharedClockStorage.loadEffectivePreferences()
         completion(
             ClockTimelineEntry(
                 date: now,
@@ -53,7 +53,7 @@ struct SecondClockTimelineProvider: TimelineProvider {
         let calendar = Calendar.autoupdatingCurrent
         let now = Date()
         let today = calendar.startOfDay(for: now)
-        let preferences = SharedClockStorage.loadPreferences()
+        let preferences = SharedClockStorage.loadEffectivePreferences()
         let backgroundImageRevision = backgroundImageRevision(for: preferences)
 
         var entries = [

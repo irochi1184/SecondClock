@@ -2,35 +2,186 @@ import PhotosUI
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var settingsStore: ClockSettingsStore
+    @EnvironmentObject private var purchaseManager: PurchaseManager
+    @State private var showsSettings = false
+
+    private var effectivePreferences: ClockPreferences {
+        settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
+    }
+
+    var body: some View {
+        ZStack {
+            ClockBackgroundView(preferences: effectivePreferences)
+                .id(settingsStore.backgroundImageRevision)
+                .ignoresSafeArea()
+
+            FullScreenClockView(preferences: effectivePreferences)
+
+            VStack {
+                HStack {
+                    Spacer()
+
+                    Button {
+                        showsSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 21, weight: .semibold))
+                            .frame(width: 48, height: 48)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(.white.opacity(0.18), lineWidth: 1)
+                            }
+                            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("時計の設定を開く")
+                    .accessibilityHint("表示サイズや背景を変更できます")
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .statusBarHidden(!showsSettings)
+        .persistentSystemOverlays(showsSettings ? .visible : .hidden)
+        .sheet(isPresented: $showsSettings) {
+            ClockSettingsView()
+                .environmentObject(settingsStore)
+                .environmentObject(purchaseManager)
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await purchaseManager.start() }
+        }
+    }
+}
+
+private struct FullScreenClockView: View {
+    let preferences: ClockPreferences
+
+    var body: some View {
+        GeometryReader { geometry in
+            let showsDate = preferences.showDate
+            let baseSize = min(
+                geometry.size.width / 5.9,
+                geometry.size.height * (showsDate ? 0.34 : 0.44)
+            )
+            let timeFontSize = max(38, baseSize * preferences.displaySize.scale)
+            let dateFontSize = max(15, timeFontSize * 0.2)
+
+            VStack(spacing: max(8, timeFontSize * 0.1)) {
+                if showsDate {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        Text(
+                            context.date,
+                            format: .dateTime
+                                .year()
+                                .month(.wide)
+                                .day()
+                                .weekday(.wide)
+                        )
+                        .font(
+                            .system(
+                                size: dateFontSize,
+                                weight: .medium,
+                                design: preferences.fontDesign.swiftUIFontDesign
+                            )
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    }
+                }
+
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(
+                        context.date,
+                        format: .dateTime
+                            .hour(.twoDigits(amPM: .omitted))
+                            .minute(.twoDigits)
+                            .second(.twoDigits)
+                    )
+                    .font(
+                        .system(
+                            size: timeFontSize,
+                            weight: preferences.fontWeight.swiftUIFontWeight,
+                            design: preferences.fontDesign.swiftUIFontDesign
+                        )
+                    )
+                    .monospacedDigit()
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.38)
+                    .lineLimit(1)
+                }
+            }
+            .foregroundStyle(preferences.textColor.color)
+            .multilineTextAlignment(.center)
+            .shadow(color: .black.opacity(0.3), radius: 9, y: 3)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: .center
+            )
+        }
+    }
+}
+
+struct ClockSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settingsStore: ClockSettingsStore
+    @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var errorMessage: String?
     @State private var showsResetConfirmation = false
+    @State private var showsPaywall = false
+
+    private var effectivePreferences: ClockPreferences {
+        settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     ClockPreviewCard(
-                        preferences: settingsStore.preferences,
+                        preferences: effectivePreferences,
                         imageRevision: settingsStore.backgroundImageRevision
                     )
 
-                    if !settingsStore.isAppGroupAvailable {
+                    proStatusCard
+
+                    if shouldShowAppGroupWarning {
                         AppGroupWarning()
                     }
 
-                    dateSection
+                    displaySection
                     typographySection
                     backgroundSection
+                    informationSection
                     resetSection
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 32)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("SecondClock")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("時計の設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完了") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
             .alert(
                 "画像を設定できませんでした",
                 isPresented: Binding(
@@ -52,11 +203,32 @@ struct ContentView: View {
                 }
                 Button("キャンセル", role: .cancel) {}
             }
+            .sheet(isPresented: $showsPaywall) {
+                ProPaywallView()
+                    .environmentObject(purchaseManager)
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 
-    private var dateSection: some View {
+    private var shouldShowAppGroupWarning: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.environment["SECOND_CLOCK_SCREENSHOT_MODE"] != nil {
+            return false
+        }
+        #endif
+        return !settingsStore.isAppGroupAvailable
+    }
+
+    private var displaySection: some View {
         SettingsCard(title: "表示") {
+            Picker("時計の大きさ", selection: $settingsStore.preferences.displaySize) {
+                ForEach(ClockDisplaySize.allCases) { size in
+                    Text(size.title).tag(size)
+                }
+            }
+            .pickerStyle(.segmented)
+
             Toggle("日付を表示", isOn: $settingsStore.preferences.showDate)
 
             Text("時刻は24時間形式で、秒まで表示します。")
@@ -67,20 +239,36 @@ struct ContentView: View {
     }
 
     private var typographySection: some View {
-        SettingsCard(title: "文字") {
-            Picker("書体", selection: $settingsStore.preferences.fontDesign) {
-                ForEach(ClockFontDesign.allCases) { design in
-                    Text(design.title).tag(design)
-                }
-            }
-            .pickerStyle(.segmented)
+        SettingsCard(title: "時計の種類") {
+            Text("書体")
+                .font(.subheadline)
 
-            Picker("太さ", selection: $settingsStore.preferences.fontWeight) {
-                ForEach(ClockFontWeight.allCases) { weight in
-                    Text(weight.title).tag(weight)
+            HStack(spacing: 8) {
+                ForEach(ClockFontDesign.allCases) { design in
+                    ClockOptionButton(
+                        title: design.title,
+                        isSelected: effectivePreferences.fontDesign == design,
+                        isLocked: design.requiresPro && !purchaseManager.isProUnlocked
+                    ) {
+                        selectFontDesign(design)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
+
+            Text("太さ")
+                .font(.subheadline)
+
+            HStack(spacing: 8) {
+                ForEach(ClockFontWeight.allCases) { weight in
+                    ClockOptionButton(
+                        title: weight.title,
+                        isSelected: effectivePreferences.fontWeight == weight,
+                        isLocked: weight.requiresPro && !purchaseManager.isProUnlocked
+                    ) {
+                        selectFontWeight(weight)
+                    }
+                }
+            }
 
             ColorPicker(
                 "文字色",
@@ -93,16 +281,23 @@ struct ContentView: View {
     @ViewBuilder
     private var backgroundSection: some View {
         SettingsCard(title: "背景") {
-            Picker("種類", selection: $settingsStore.preferences.backgroundStyle) {
+            themePresets
+
+            Picker("種類", selection: backgroundStyleBinding) {
                 ForEach(ClockBackgroundStyle.allCases) { style in
-                    Text(style.title).tag(style)
+                    Text(
+                        style.requiresPro && !purchaseManager.isProUnlocked
+                            ? "\(style.title)（Pro）"
+                            : style.title
+                    )
+                    .tag(style)
                 }
             }
             .pickerStyle(.menu)
 
-            switch settingsStore.preferences.backgroundStyle {
+            switch effectivePreferences.backgroundStyle {
             case .system:
-                Text("表示場所に合わせて、iOSが背景の外観を調整します。")
+                Text("画面の外観に合わせて、iOSが背景色を調整します。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -159,6 +354,154 @@ struct ContentView: View {
         .padding(.top, 2)
     }
 
+    private var informationSection: some View {
+        SettingsCard(title: "サポートと情報") {
+            Link(
+                destination: URL(
+                    string: "https://secondclock-support.ariken.chatgpt.site/support"
+                )!
+            ) {
+                Label("サポート・お問い合わせ", systemImage: "questionmark.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Divider()
+
+            Link(
+                destination: URL(
+                    string: "https://secondclock-support.ariken.chatgpt.site/privacy"
+                )!
+            ) {
+                Label("プライバシーポリシー", systemImage: "hand.raised")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text("SecondClock 1.0.0")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var proStatusCard: some View {
+        Group {
+            if purchaseManager.isProUnlocked {
+                Label {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("SecondClock Pro")
+                            .font(.headline)
+                        Text("購入済み・すべての機能を利用できます")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.green.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            } else {
+                Button {
+                    showsPaywall = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "crown.fill")
+                            .font(.title2)
+                            .foregroundStyle(.yellow)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("SecondClock Pro")
+                                .font(.headline)
+                            Text("写真背景と限定テーマを買い切りで解放")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        LinearGradient(
+                            colors: [.indigo.opacity(0.16), .blue.opacity(0.11)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(.indigo.opacity(0.18), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Pro機能の購入画面を開きます")
+            }
+        }
+    }
+
+    private var themePresets: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("テーマ")
+                .font(.subheadline)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(ClockThemePreset.allCases) { preset in
+                        ThemePresetButton(
+                            preset: preset,
+                            isLocked: preset.requiresPro && !purchaseManager.isProUnlocked
+                        ) {
+                            if preset.requiresPro && !purchaseManager.isProUnlocked {
+                                showsPaywall = true
+                            } else {
+                                settingsStore.preferences = preset.applying(
+                                    to: settingsStore.preferences
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var backgroundStyleBinding: Binding<ClockBackgroundStyle> {
+        Binding(
+            get: { effectivePreferences.backgroundStyle },
+            set: { newStyle in
+                if newStyle.requiresPro && !purchaseManager.isProUnlocked {
+                    showsPaywall = true
+                } else {
+                    settingsStore.preferences.backgroundStyle = newStyle
+                }
+            }
+        )
+    }
+
+    private func selectFontDesign(_ design: ClockFontDesign) {
+        if design.requiresPro && !purchaseManager.isProUnlocked {
+            showsPaywall = true
+        } else {
+            settingsStore.preferences.fontDesign = design
+        }
+    }
+
+    private func selectFontWeight(_ weight: ClockFontWeight) {
+        if weight.requiresPro && !purchaseManager.isProUnlocked {
+            showsPaywall = true
+        } else {
+            settingsStore.preferences.fontWeight = weight
+        }
+    }
+
     private func colorBinding(
         for keyPath: WritableKeyPath<ClockPreferences, RGBAColor>
     ) -> Binding<Color> {
@@ -170,6 +513,12 @@ struct ContentView: View {
 
     @MainActor
     private func importPhoto(from item: PhotosPickerItem) async {
+        guard purchaseManager.isProUnlocked else {
+            showsPaywall = true
+            selectedPhoto = nil
+            return
+        }
+
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw PhotoBackgroundError.invalidImage
@@ -183,15 +532,20 @@ struct ContentView: View {
 }
 
 private struct ClockPreviewCard: View {
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let preferences: ClockPreferences
     let imageRevision: UUID
+
+    private var usesCompactLayout: Bool {
+        verticalSizeClass == .compact
+    }
 
     var body: some View {
         ZStack {
             ClockBackgroundView(preferences: preferences)
                 .id(imageRevision)
 
-            VStack(spacing: 7) {
+            VStack(spacing: usesCompactLayout ? 4 : 7) {
                 if preferences.showDate {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         Text(
@@ -202,7 +556,14 @@ private struct ClockPreviewCard: View {
                                 .day()
                                 .weekday(.wide)
                         )
-                        .font(.system(.subheadline, design: preferences.fontDesign.swiftUIFontDesign))
+                        .font(
+                            .system(
+                                usesCompactLayout ? .caption : .subheadline,
+                                design: preferences.fontDesign.swiftUIFontDesign
+                            )
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     }
                 }
 
@@ -216,22 +577,22 @@ private struct ClockPreviewCard: View {
                     )
                     .font(
                         .system(
-                            size: 54,
+                            size: (usesCompactLayout ? 36 : 50) * preferences.displaySize.scale,
                             weight: preferences.fontWeight.swiftUIFontWeight,
                             design: preferences.fontDesign.swiftUIFontDesign
                         )
                     )
                     .monospacedDigit()
-                    .minimumScaleFactor(0.55)
+                    .minimumScaleFactor(0.5)
                     .lineLimit(1)
                 }
             }
             .foregroundStyle(preferences.textColor.color)
-            .padding(22)
+            .padding(usesCompactLayout ? 14 : 22)
             .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(1.72, contentMode: .fit)
+        .frame(maxWidth: usesCompactLayout ? 520 : .infinity)
+        .aspectRatio(usesCompactLayout ? 2.4 : 1.72, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -264,6 +625,104 @@ private struct SettingsCard<Content: View>: View {
     }
 }
 
+private struct ClockOptionButton: View {
+    let title: String
+    let isSelected: Bool
+    let isLocked: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.caption2)
+                }
+
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                isSelected
+                    ? Color.accentColor.opacity(0.14)
+                    : Color(uiColor: .tertiarySystemGroupedBackground)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(
+                        isSelected ? Color.accentColor.opacity(0.7) : .clear,
+                        lineWidth: 1.5
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isLocked ? "\(title)、Pro" : title)
+    }
+}
+
+private struct LockedSettingButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Label("Pro", systemImage: "lock.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.indigo)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ThemePresetButton: View {
+    let preset: ClockThemePreset
+    let isLocked: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                LinearGradient(
+                    colors: preset.colors.map(\.color),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(width: 74, height: 46)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.white)
+                            .padding(5)
+                            .background(.black.opacity(0.55), in: Circle())
+                            .padding(3)
+                    }
+                }
+
+                Text(preset.title)
+                    .font(.caption2)
+                    .foregroundStyle(.primary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isLocked ? "\(preset.title)、Pro" : preset.title)
+    }
+}
+
 private struct AppGroupWarning: View {
     var body: some View {
         Label {
@@ -283,4 +742,5 @@ private struct AppGroupWarning: View {
 #Preview {
     ContentView()
         .environmentObject(ClockSettingsStore())
+        .environmentObject(PurchaseManager())
 }

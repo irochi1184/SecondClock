@@ -7,6 +7,7 @@ enum SharedClockStorage {
     static let widgetKind = "SecondClockWidget"
 
     private static let preferencesKey = "clock.preferences.v1"
+    private static let proEntitlementCacheKey = "purchase.pro.entitlement.cache.v1"
     private static let backgroundImageName = "clock-background.jpg"
 
     private static var sharedDefaults: UserDefaults {
@@ -32,6 +33,20 @@ enum SharedClockStorage {
     static func savePreferences(_ preferences: ClockPreferences) {
         guard let data = try? JSONEncoder().encode(preferences) else { return }
         sharedDefaults.set(data, forKey: preferencesKey)
+    }
+
+    static func loadEffectivePreferences() -> ClockPreferences {
+        loadPreferences().applying(
+            accessLevel: ClockAccessLevel(isProUnlocked: isProEntitlementCached)
+        )
+    }
+
+    static var isProEntitlementCached: Bool {
+        sharedDefaults.bool(forKey: proEntitlementCacheKey)
+    }
+
+    static func cacheProEntitlement(_ isUnlocked: Bool) {
+        sharedDefaults.set(isUnlocked, forKey: proEntitlementCacheKey)
     }
 
     static var backgroundImageURL: URL? {

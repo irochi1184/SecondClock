@@ -19,6 +19,30 @@ enum ClockBackgroundStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ClockDisplaySize: String, Codable, CaseIterable, Identifiable {
+    case small
+    case medium
+    case large
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .small: "小"
+        case .medium: "標準"
+        case .large: "大"
+        }
+    }
+
+    var scale: CGFloat {
+        switch self {
+        case .small: 0.78
+        case .medium: 1
+        case .large: 1.2
+        }
+    }
+}
+
 enum ClockFontDesign: String, Codable, CaseIterable, Identifiable {
     case rounded
     case standard
@@ -114,6 +138,7 @@ struct RGBAColor: Codable, Equatable {
 
 struct ClockPreferences: Codable, Equatable {
     var showDate: Bool
+    var displaySize: ClockDisplaySize
     var fontDesign: ClockFontDesign
     var fontWeight: ClockFontWeight
     var textColor: RGBAColor
@@ -125,6 +150,7 @@ struct ClockPreferences: Codable, Equatable {
 
     static let `default` = ClockPreferences(
         showDate: true,
+        displaySize: .medium,
         fontDesign: .rounded,
         fontWeight: .medium,
         textColor: .white,
@@ -134,4 +160,81 @@ struct ClockPreferences: Codable, Equatable {
         gradientEndColor: .blue,
         photoDimming: 0.28
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case showDate
+        case displaySize
+        case fontDesign
+        case fontWeight
+        case textColor
+        case backgroundStyle
+        case solidColor
+        case gradientStartColor
+        case gradientEndColor
+        case photoDimming
+    }
+
+    init(
+        showDate: Bool,
+        displaySize: ClockDisplaySize,
+        fontDesign: ClockFontDesign,
+        fontWeight: ClockFontWeight,
+        textColor: RGBAColor,
+        backgroundStyle: ClockBackgroundStyle,
+        solidColor: RGBAColor,
+        gradientStartColor: RGBAColor,
+        gradientEndColor: RGBAColor,
+        photoDimming: Double
+    ) {
+        self.showDate = showDate
+        self.displaySize = displaySize
+        self.fontDesign = fontDesign
+        self.fontWeight = fontWeight
+        self.textColor = textColor
+        self.backgroundStyle = backgroundStyle
+        self.solidColor = solidColor
+        self.gradientStartColor = gradientStartColor
+        self.gradientEndColor = gradientEndColor
+        self.photoDimming = photoDimming
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = ClockPreferences.default
+
+        showDate = try values.decodeIfPresent(Bool.self, forKey: .showDate)
+            ?? defaults.showDate
+        displaySize = try values.decodeIfPresent(ClockDisplaySize.self, forKey: .displaySize)
+            ?? defaults.displaySize
+        fontDesign = try values.decodeIfPresent(ClockFontDesign.self, forKey: .fontDesign)
+            ?? defaults.fontDesign
+        fontWeight = try values.decodeIfPresent(ClockFontWeight.self, forKey: .fontWeight)
+            ?? defaults.fontWeight
+        textColor = try values.decodeIfPresent(RGBAColor.self, forKey: .textColor)
+            ?? defaults.textColor
+        backgroundStyle = try values.decodeIfPresent(ClockBackgroundStyle.self, forKey: .backgroundStyle)
+            ?? defaults.backgroundStyle
+        solidColor = try values.decodeIfPresent(RGBAColor.self, forKey: .solidColor)
+            ?? defaults.solidColor
+        gradientStartColor = try values.decodeIfPresent(RGBAColor.self, forKey: .gradientStartColor)
+            ?? defaults.gradientStartColor
+        gradientEndColor = try values.decodeIfPresent(RGBAColor.self, forKey: .gradientEndColor)
+            ?? defaults.gradientEndColor
+        photoDimming = try values.decodeIfPresent(Double.self, forKey: .photoDimming)
+            ?? defaults.photoDimming
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(showDate, forKey: .showDate)
+        try values.encode(displaySize, forKey: .displaySize)
+        try values.encode(fontDesign, forKey: .fontDesign)
+        try values.encode(fontWeight, forKey: .fontWeight)
+        try values.encode(textColor, forKey: .textColor)
+        try values.encode(backgroundStyle, forKey: .backgroundStyle)
+        try values.encode(solidColor, forKey: .solidColor)
+        try values.encode(gradientStartColor, forKey: .gradientStartColor)
+        try values.encode(gradientEndColor, forKey: .gradientEndColor)
+        try values.encode(photoDimming, forKey: .photoDimming)
+    }
 }
