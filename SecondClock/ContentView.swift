@@ -13,59 +13,78 @@ struct ContentView: View {
         settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
     }
 
+    init(initiallyShowsSettings: Bool = false) {
+        _showsSettings = State(initialValue: initiallyShowsSettings)
+    }
+
     var body: some View {
-        ZStack {
-            ClockBackgroundView(preferences: effectivePreferences)
-                .id(settingsStore.backgroundImageRevision)
-                .id(settingsStore.activePresetID)
-                .ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                ClockBackgroundView(preferences: effectivePreferences)
+                    .id(settingsStore.backgroundImageRevision)
+                    .id(settingsStore.activePresetID)
+                    .ignoresSafeArea()
 
-            FullScreenClockView(preferences: effectivePreferences)
-                .id(settingsStore.activePresetID)
+                FullScreenClockView(preferences: effectivePreferences)
+                    .id(settingsStore.activePresetID)
+                    .scaleEffect(
+                        showsSettings && geometry.size.width > geometry.size.height
+                            ? 0.8
+                            : 1
+                    )
+                    .offset(y: showsSettings ? -geometry.size.height * 0.24 : 0)
 
-            VStack {
-                HStack {
-                    Spacer()
+                VStack {
+                    HStack {
+                        Spacer()
 
-                    Button {
-                        showsSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 21, weight: .semibold))
-                            .frame(width: 48, height: 48)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .overlay {
-                                Circle()
-                                    .stroke(.white.opacity(0.18), lineWidth: 1)
-                            }
-                            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+                        Button {
+                            showsSettings = true
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 21, weight: .semibold))
+                                .frame(width: 48, height: 48)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay {
+                                    Circle()
+                                        .stroke(.white.opacity(0.18), lineWidth: 1)
+                                }
+                                .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                        .accessibilityLabel("時計の設定を開く")
+                        .accessibilityHint("時計を見ながら表示サイズや背景を変更できます")
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-                    .accessibilityLabel("時計の設定を開く")
-                    .accessibilityHint("表示サイズや背景を変更できます")
+
+                    Spacer()
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
 
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            if settingsStore.presets.count > 1 {
-                presetIndicator
+                if settingsStore.presets.count > 1 && !showsSettings {
+                    presetIndicator
+                }
             }
         }
         .contentShape(Rectangle())
         .simultaneousGesture(presetSwipeGesture)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.22), value: settingsStore.activePresetID)
+        .animation(.easeInOut(duration: 0.28), value: showsSettings)
         .statusBarHidden(!showsSettings)
         .persistentSystemOverlays(showsSettings ? .visible : .hidden)
         .sheet(isPresented: $showsSettings) {
             ClockSettingsView()
                 .environmentObject(settingsStore)
                 .environmentObject(purchaseManager)
+                .presentationDetents([.fraction(0.5)])
                 .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(
+                    .enabled(upThrough: .fraction(0.5))
+                )
+                .presentationContentInteraction(.scrolls)
+                .presentationCornerRadius(28)
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -245,15 +264,6 @@ struct ClockSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    ClockPreviewCard(
-                        preferences: effectivePreferences,
-                        imageRevision: settingsStore.backgroundImageRevision
-                    )
-
-                    proStatusCard
-
-                    presetSection
-
                     if shouldShowAppGroupWarning {
                         AppGroupWarning()
                     }
@@ -261,6 +271,8 @@ struct ClockSettingsView: View {
                     displaySection
                     typographySection
                     backgroundSection
+                    presetSection
+                    proStatusCard
                     informationSection
                     resetSection
                 }
@@ -710,78 +722,6 @@ struct ClockSettingsView: View {
             errorMessage = error.localizedDescription
         }
         selectedPhoto = nil
-    }
-}
-
-private struct ClockPreviewCard: View {
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    let preferences: ClockPreferences
-    let imageRevision: UUID
-
-    private var usesCompactLayout: Bool {
-        verticalSizeClass == .compact
-    }
-
-    var body: some View {
-        ZStack {
-            ClockBackgroundView(preferences: preferences)
-                .id(imageRevision)
-
-            VStack(spacing: usesCompactLayout ? 4 : 7) {
-                if preferences.showDate {
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(
-                            context.date,
-                            format: .dateTime
-                                .year()
-                                .month(.wide)
-                                .day()
-                                .weekday(.wide)
-                        )
-                        .font(
-                            .system(
-                                usesCompactLayout ? .caption : .subheadline,
-                                design: preferences.fontDesign.swiftUIFontDesign
-                            )
-                        )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    }
-                }
-
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(
-                        context.date,
-                        format: .dateTime
-                            .hour(.twoDigits(amPM: .omitted))
-                            .minute(.twoDigits)
-                            .second(.twoDigits)
-                    )
-                    .font(
-                        .system(
-                            size: (usesCompactLayout ? 36 : 50) * preferences.displaySize.scale,
-                            weight: preferences.fontWeight.swiftUIFontWeight,
-                            design: preferences.fontDesign.swiftUIFontDesign
-                        )
-                    )
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                }
-            }
-            .foregroundStyle(preferences.textColor.color)
-            .padding(usesCompactLayout ? 14 : 22)
-            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
-        }
-        .frame(maxWidth: usesCompactLayout ? 520 : .infinity)
-        .aspectRatio(usesCompactLayout ? 2.4 : 1.72, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
-        .padding(.top, 4)
     }
 }
 

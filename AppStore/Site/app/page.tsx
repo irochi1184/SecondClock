@@ -34,7 +34,7 @@ export default function Home() {
         <article>
           <p className="featureNumber">02</p>
           <h2>空間に合わせて選べる。</h2>
-          <p>サイズ、書体、色、背景をプリセットとして保存。時計画面を左右にスワイプして、すぐに切り替えられます。</p>
+          <p>時計を上半分に表示したまま、サイズ、書体、色、背景を調整。完成したデザインはプリセットとして保存できます。</p>
         </article>
         <article>
           <p className="featureNumber">03</p>

@@ -10,7 +10,7 @@ struct AppStoreScreenshotRootView: View {
         Group {
             switch mode {
             case "settings", "settings-landscape":
-                ClockSettingsView()
+                ContentView(initiallyShowsSettings: true)
 
             case "paywall", "paywall-landscape":
                 ProPaywallView()
