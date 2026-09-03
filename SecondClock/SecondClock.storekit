@@ -1,0 +1,47 @@
+{
+  "identifier" : "4D8F59DB-6D9A-46CA-97BD-C4D8844DF282",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "700",
+      "familyShareable" : false,
+      "internalID" : "692BDD38-722E-4FBC-8319-6833C0DF3D48",
+      "localizations" : [
+        {
+          "description" : "アニメ背景・時計デザイン・自動切替を解放",
+          "displayName" : "SecondClock Pro",
+          "locale" : "ja_JP"
+        },
+        {
+          "description" : "Animations, faces, schedules, and photos.",
+          "displayName" : "SecondClock Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.irochi.SecondClock.pro.lifetime",
+      "referenceName" : "SecondClock Pro Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "XX3ULK22EF",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ja_JP",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
