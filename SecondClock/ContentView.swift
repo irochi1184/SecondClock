@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -8,9 +9,17 @@ struct ContentView: View {
     @State private var showsSettings = false
     @State private var presetFeedbackName: String?
     @State private var presetFeedbackToken = UUID()
+    @State private var currentDate = Date()
 
     private var effectivePreferences: ClockPreferences {
-        settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
+        settingsStore.effectivePreferences(
+            isProUnlocked: purchaseManager.isProUnlocked,
+            at: currentDate
+        )
+    }
+
+    private var isNightModeActive: Bool {
+        effectivePreferences.isNightModeActive(at: currentDate)
     }
 
     init(initiallyShowsSettings: Bool = false) {
@@ -20,13 +29,36 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                ClockBackgroundView(preferences: effectivePreferences)
+                Group {
+                    if isNightModeActive {
+                        Color.black
+                    } else {
+                        ClockBackgroundView(
+                            preferences: effectivePreferences,
+                            animatesBackground: true
+                        )
+                    }
+                }
                     .id(settingsStore.backgroundImageRevision)
-                    .id(settingsStore.activePresetID)
+                    .id(
+                        settingsStore.effectivePresetID(
+                            isProUnlocked: purchaseManager.isProUnlocked,
+                            at: currentDate
+                        )
+                    )
+                    .transition(.opacity)
                     .ignoresSafeArea()
 
-                FullScreenClockView(preferences: effectivePreferences)
-                    .id(settingsStore.activePresetID)
+                FullScreenClockView(
+                    preferences: effectivePreferences,
+                    isNightModeActive: isNightModeActive
+                )
+                    .id(
+                        settingsStore.effectivePresetID(
+                            isProUnlocked: purchaseManager.isProUnlocked,
+                            at: currentDate
+                        )
+                    )
                     .scaleEffect(
                         showsSettings && geometry.size.width > geometry.size.height
                             ? 0.8
@@ -71,6 +103,8 @@ struct ContentView: View {
         .simultaneousGesture(presetSwipeGesture)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.22), value: settingsStore.activePresetID)
+        .animation(.easeInOut(duration: 0.4), value: displayedPresetID)
+        .animation(.easeInOut(duration: 0.4), value: isNightModeActive)
         .animation(.easeInOut(duration: 0.28), value: showsSettings)
         .statusBarHidden(!showsSettings)
         .persistentSystemOverlays(showsSettings ? .visible : .hidden)
@@ -87,8 +121,26 @@ struct ContentView: View {
                 .presentationCornerRadius(28)
         }
         .onChange(of: scenePhase) { _, newPhase in
+            updateIdleTimer(for: newPhase)
             guard newPhase == .active else { return }
+            settingsStore.reloadFromSharedStorage()
+            currentDate = .now
             Task { await purchaseManager.start() }
+        }
+        .onChange(of: effectivePreferences.keepsScreenAwake) { _, _ in
+            updateIdleTimer(for: scenePhase)
+        }
+        .onAppear {
+            updateIdleTimer(for: scenePhase)
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .task {
+            while !Task.isCancelled {
+                currentDate = .now
+                try? await Task.sleep(for: .seconds(30))
+            }
         }
     }
 
@@ -106,7 +158,7 @@ struct ContentView: View {
                         ForEach(settingsStore.presets) { preset in
                             Circle()
                                 .fill(
-                                    preset.id == settingsStore.activePresetID
+                                    preset.id == displayedPresetID
                                         ? Color.primary
                                         : Color.primary.opacity(0.3)
                                 )
@@ -129,20 +181,35 @@ struct ContentView: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(settingsStore.activePresetName)、\(activePresetIndex + 1)個目、全\(settingsStore.presets.count)個"
+            "\(displayedPresetName)、\(activePresetIndex + 1)個目、全\(settingsStore.presets.count)個"
         )
     }
 
     private var activePresetIndex: Int {
-        settingsStore.presets.firstIndex(where: {
-            $0.id == settingsStore.activePresetID
+        return settingsStore.presets.firstIndex(where: {
+            $0.id == displayedPresetID
         }) ?? 0
+    }
+
+    private var displayedPresetID: UUID {
+        settingsStore.effectivePresetID(
+            isProUnlocked: purchaseManager.isProUnlocked,
+            at: currentDate
+        )
+    }
+
+    private var displayedPresetName: String {
+        settingsStore.effectivePresetName(
+            isProUnlocked: purchaseManager.isProUnlocked,
+            at: currentDate
+        )
     }
 
     private var presetSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 35)
             .onEnded { value in
                 guard !showsSettings,
+                      !(purchaseManager.isProUnlocked && settingsStore.presetSchedule.isEnabled),
                       abs(value.translation.width) > abs(value.translation.height),
                       abs(value.translation.width) >= 60
                 else {
@@ -173,76 +240,235 @@ struct ContentView: View {
             }
         }
     }
+
+    private func updateIdleTimer(for phase: ScenePhase) {
+        UIApplication.shared.isIdleTimerDisabled = phase == .active
+            && effectivePreferences.keepsScreenAwake
+    }
 }
 
 private struct FullScreenClockView: View {
     let preferences: ClockPreferences
+    let isNightModeActive: Bool
 
     var body: some View {
         GeometryReader { geometry in
-            let showsDate = preferences.showDate
-            let baseSize = min(
-                geometry.size.width / 5.9,
-                geometry.size.height * (showsDate ? 0.34 : 0.44)
-            )
-            let timeFontSize = max(38, baseSize * preferences.displaySize.scale)
-            let dateFontSize = max(15, timeFontSize * 0.2)
-
-            VStack(spacing: max(8, timeFontSize * 0.1)) {
-                if showsDate {
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(
-                            context.date,
-                            format: .dateTime
-                                .year()
-                                .month(.wide)
-                                .day()
-                                .weekday(.wide)
-                        )
-                        .font(
-                            .system(
-                                size: dateFontSize,
-                                weight: .medium,
-                                design: preferences.fontDesign.swiftUIFontDesign
-                            )
-                        )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    }
-                }
-
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(
-                        context.date,
-                        format: .dateTime
-                            .hour(.twoDigits(amPM: .omitted))
-                            .minute(.twoDigits)
-                            .second(.twoDigits)
-                    )
-                    .font(
-                        .system(
-                            size: timeFontSize,
-                            weight: preferences.fontWeight.swiftUIFontWeight,
-                            design: preferences.fontDesign.swiftUIFontDesign
-                        )
-                    )
-                    .monospacedDigit()
-                    .allowsTightening(true)
-                    .minimumScaleFactor(0.38)
-                    .lineLimit(1)
-                }
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                ClockLayoutContent(
+                    preferences: preferences,
+                    date: context.date,
+                    size: geometry.size
+                )
+                .foregroundStyle(preferences.textColor.color)
+                .opacity(
+                    isNightModeActive
+                        ? min(max(preferences.nightTextIntensity, 0.2), 1)
+                        : 1
+                )
+                .multilineTextAlignment(.center)
+                .shadow(
+                    color: isNightModeActive ? .clear : .black.opacity(0.3),
+                    radius: 9,
+                    y: 3
+                )
+                .offset(burnInOffset(at: context.date))
+                .animation(.easeInOut(duration: 1.2), value: preferences.layoutStyle)
             }
-            .foregroundStyle(preferences.textColor.color)
-            .multilineTextAlignment(.center)
-            .shadow(color: .black.opacity(0.3), radius: 9, y: 3)
             .padding(.horizontal, 24)
             .padding(.vertical, 20)
-            .frame(
-                width: geometry.size.width,
-                height: geometry.size.height,
-                alignment: .center
-            )
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
+    }
+
+    private func burnInOffset(at date: Date) -> CGSize {
+        guard isNightModeActive && preferences.burnInProtection else { return .zero }
+        let minute = floor(date.timeIntervalSinceReferenceDate / 60)
+        return CGSize(
+            width: sin(minute * 2.399) * 10,
+            height: cos(minute * 1.733) * 8
+        )
+    }
+}
+
+private struct ClockLayoutContent: View {
+    let preferences: ClockPreferences
+    let date: Date
+    let size: CGSize
+
+    private var baseSize: CGFloat {
+        min(
+            size.width / 5.9,
+            size.height * (preferences.showDate ? 0.34 : 0.44)
+        ) * preferences.displaySize.scale
+    }
+
+    private var timeFontSize: CGFloat { max(38, baseSize) }
+    private var dateFontSize: CGFloat { max(15, timeFontSize * 0.2) }
+
+    var body: some View {
+        switch preferences.layoutStyle {
+        case .classic:
+            classicLayout
+        case .secondsFocus:
+            secondsFocusLayout
+        case .flip:
+            flipLayout
+        case .secondsRing:
+            secondsRingLayout
+        }
+    }
+
+    private var classicLayout: some View {
+        VStack(spacing: max(8, timeFontSize * 0.1)) {
+            dateLabel
+            Text(
+                date,
+                format: .dateTime
+                    .hour(.twoDigits(amPM: .omitted))
+                    .minute(.twoDigits)
+                    .second(.twoDigits)
+            )
+            .font(clockFont(size: timeFontSize))
+            .monospacedDigit()
+            .allowsTightening(true)
+            .minimumScaleFactor(0.38)
+            .lineLimit(1)
+        }
+    }
+
+    private var secondsFocusLayout: some View {
+        let components = Calendar.autoupdatingCurrent.dateComponents(
+            [.hour, .minute, .second],
+            from: date
+        )
+        let hoursMinutes = String(
+            format: "%02d:%02d",
+            components.hour ?? 0,
+            components.minute ?? 0
+        )
+        let seconds = String(format: "%02d", components.second ?? 0)
+
+        return VStack(spacing: max(6, timeFontSize * 0.06)) {
+            dateLabel
+            HStack(alignment: .lastTextBaseline, spacing: max(10, timeFontSize * 0.12)) {
+                Text(hoursMinutes)
+                    .font(clockFont(size: timeFontSize * 0.86))
+                Text(seconds)
+                    .font(clockFont(size: timeFontSize * 1.28))
+                    .padding(.horizontal, timeFontSize * 0.15)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .monospacedDigit()
+            .minimumScaleFactor(0.35)
+            .lineLimit(1)
+        }
+    }
+
+    private var flipLayout: some View {
+        let components = Calendar.autoupdatingCurrent.dateComponents(
+            [.hour, .minute, .second],
+            from: date
+        )
+
+        return VStack(spacing: max(10, timeFontSize * 0.12)) {
+            dateLabel
+            HStack(spacing: max(6, timeFontSize * 0.08)) {
+                FlipClockUnit(value: components.hour ?? 0, font: clockFont(size: timeFontSize * 0.72))
+                Text(":").font(clockFont(size: timeFontSize * 0.62))
+                FlipClockUnit(value: components.minute ?? 0, font: clockFont(size: timeFontSize * 0.72))
+                Text(":").font(clockFont(size: timeFontSize * 0.62))
+                FlipClockUnit(value: components.second ?? 0, font: clockFont(size: timeFontSize * 0.72))
+            }
+            .minimumScaleFactor(0.42)
+            .lineLimit(1)
+        }
+    }
+
+    private var secondsRingLayout: some View {
+        let second = Calendar.autoupdatingCurrent.component(.second, from: date)
+        let diameter = min(size.width * 0.72, size.height * (preferences.showDate ? 0.68 : 0.8))
+
+        return VStack(spacing: 8) {
+            dateLabel
+            ZStack {
+                Circle()
+                    .stroke(.primary.opacity(0.16), lineWidth: max(7, diameter * 0.035))
+                Circle()
+                    .trim(from: 0, to: CGFloat(second + 1) / 60)
+                    .stroke(
+                        preferences.textColor.color,
+                        style: StrokeStyle(
+                            lineWidth: max(7, diameter * 0.035),
+                            lineCap: .round
+                        )
+                    )
+                    .rotationEffect(.degrees(-90))
+                Text(
+                    date,
+                    format: .dateTime
+                        .hour(.twoDigits(amPM: .omitted))
+                        .minute(.twoDigits)
+                        .second(.twoDigits)
+                )
+                .font(clockFont(size: max(28, diameter * 0.18)))
+                .monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .padding(diameter * 0.12)
+            }
+            .frame(width: diameter, height: diameter)
+        }
+    }
+
+    @ViewBuilder
+    private var dateLabel: some View {
+        if preferences.showDate {
+            Text(
+                date,
+                format: .dateTime
+                    .year()
+                    .month(.wide)
+                    .day()
+                    .weekday(.wide)
+            )
+            .font(
+                .system(
+                    size: dateFontSize,
+                    weight: .medium,
+                    design: preferences.fontDesign.swiftUIFontDesign
+                )
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+        }
+    }
+
+    private func clockFont(size: CGFloat) -> Font {
+        .system(
+            size: size,
+            weight: preferences.fontWeight.swiftUIFontWeight,
+            design: preferences.fontDesign.swiftUIFontDesign
+        )
+    }
+}
+
+private struct FlipClockUnit: View {
+    let value: Int
+    let font: Font
+
+    var body: some View {
+        Text(String(format: "%02d", value))
+            .font(font)
+            .monospacedDigit()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.black.opacity(0.46), in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                Rectangle()
+                    .fill(.white.opacity(0.14))
+                    .frame(height: 1)
+            }
+            .contentTransition(.numericText())
     }
 }
 
@@ -257,7 +483,11 @@ struct ClockSettingsView: View {
     @State private var showsPaywall = false
 
     private var effectivePreferences: ClockPreferences {
-        settingsStore.effectivePreferences(isProUnlocked: purchaseManager.isProUnlocked)
+        settingsStore.preferences.applying(
+            accessLevel: ClockAccessLevel(
+                isProUnlocked: purchaseManager.isProUnlocked
+            )
+        )
     }
 
     var body: some View {
@@ -269,9 +499,12 @@ struct ClockSettingsView: View {
                     }
 
                     displaySection
+                    clockDesignSection
                     typographySection
                     backgroundSection
+                    deviceSection
                     presetSection
+                    scheduleSection
                     proStatusCard
                     informationSection
                     resetSection
@@ -356,6 +589,36 @@ struct ClockSettingsView: View {
         }
     }
 
+    private var clockDesignSection: some View {
+        SettingsCard(title: "時計デザイン") {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                ForEach(ClockLayoutStyle.allCases) { style in
+                    ClockOptionButton(
+                        title: style.title,
+                        isSelected: effectivePreferences.layoutStyle == style,
+                        isLocked: style.requiresPro && !purchaseManager.isProUnlocked
+                    ) {
+                        if style.requiresPro && !purchaseManager.isProUnlocked {
+                            showsPaywall = true
+                        } else {
+                            settingsStore.preferences.layoutStyle = style
+                        }
+                    }
+                }
+            }
+
+            Text("クラシックと秒を強調するデザインは無料で利用できます。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var presetSection: some View {
         SettingsCard(title: "プリセット") {
             Picker("使用中", selection: activePresetBinding) {
@@ -394,6 +657,107 @@ struct ClockSettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var deviceSection: some View {
+        SettingsCard(title: "置き時計モード") {
+            Toggle(
+                "表示中は画面をスリープさせない",
+                isOn: $settingsStore.preferences.keepsScreenAwake
+            )
+
+            Divider()
+
+            Picker("OLEDナイトモード", selection: nightModeBinding) {
+                ForEach(ClockNightMode.allCases) { mode in
+                    Text(
+                        mode.requiresPro && !purchaseManager.isProUnlocked
+                            ? "\(mode.title)（Pro）"
+                            : mode.title
+                    )
+                    .tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if settingsStore.preferences.nightMode == .scheduled
+                && purchaseManager.isProUnlocked
+            {
+                DatePicker(
+                    "開始",
+                    selection: timeBinding(for: \ClockPreferences.nightStartMinutes),
+                    displayedComponents: .hourAndMinute
+                )
+                DatePicker(
+                    "終了",
+                    selection: timeBinding(for: \ClockPreferences.nightEndMinutes),
+                    displayedComponents: .hourAndMinute
+                )
+            }
+
+            if effectivePreferences.nightMode != .off {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("文字の明るさ")
+                        .font(.subheadline)
+                    Slider(
+                        value: $settingsStore.preferences.nightTextIntensity,
+                        in: 0.2...1,
+                        step: 0.05
+                    )
+                }
+
+                Toggle(
+                    "焼き付き対策で時計位置を少し動かす",
+                    isOn: $settingsStore.preferences.burnInProtection
+                )
+            }
+
+            Text("ナイトモードでは背景を完全な黒にし、文字を暗く表示します。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var scheduleSection: some View {
+        SettingsCard(title: "プリセット自動切替") {
+            Toggle("時刻に合わせて自動切替", isOn: scheduleEnabledBinding)
+
+            if purchaseManager.isProUnlocked && settingsStore.presetSchedule.isEnabled {
+                Picker("昼のプリセット", selection: schedulePresetBinding(isDay: true)) {
+                    ForEach(settingsStore.presets) { preset in
+                        Text(preset.name).tag(Optional(preset.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                DatePicker(
+                    "昼に切り替える時刻",
+                    selection: scheduleTimeBinding(isDay: true),
+                    displayedComponents: .hourAndMinute
+                )
+
+                Picker("夜のプリセット", selection: schedulePresetBinding(isDay: false)) {
+                    ForEach(settingsStore.presets) { preset in
+                        Text(preset.name).tag(Optional(preset.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                DatePicker(
+                    "夜に切り替える時刻",
+                    selection: scheduleTimeBinding(isDay: false),
+                    displayedComponents: .hourAndMinute
+                )
+
+                Text("自動切替中は、全画面とウィジェットのスワイプ・切替ボタンよりもスケジュールを優先します。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if !purchaseManager.isProUnlocked {
+                Text("時間帯に合わせた自動切替はPro版で利用できます。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -515,6 +879,74 @@ struct ClockSettingsView: View {
                     supportsOpacity: false
                 )
 
+                Divider()
+
+                if purchaseManager.isProUnlocked {
+                    Picker(
+                        "背景アニメーション",
+                        selection: $settingsStore.preferences.backgroundMotion
+                    ) {
+                        ForEach(ClockBackgroundMotion.allCases) { motion in
+                            Text(motion.title).tag(motion)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if settingsStore.preferences.backgroundMotion != .none {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("動きの速さ")
+                                Spacer()
+                                Text(
+                                    settingsStore.preferences.animationSpeed,
+                                    format: .number.precision(.fractionLength(1))
+                                )
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            }
+                            .font(.subheadline)
+
+                            Slider(
+                                value: $settingsStore.preferences.animationSpeed,
+                                in: 0.5...2,
+                                step: 0.1
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("動きの強さ")
+                                Spacer()
+                                Text(
+                                    settingsStore.preferences.animationIntensity,
+                                    format: .percent.precision(.fractionLength(0))
+                                )
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            }
+                            .font(.subheadline)
+
+                            Slider(
+                                value: $settingsStore.preferences.animationIntensity,
+                                in: 0.2...1,
+                                step: 0.05
+                            )
+                        }
+
+                        Text("アプリでは常時動き、ウィジェットには同じデザインの静止状態を表示します。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    LockedSettingButton(title: "背景アニメーションを設定") {
+                        showsPaywall = true
+                    }
+
+                    Text("背景アニメーションはPro版で利用できます。ウィジェットは静止表示です。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
             case .photo:
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Label("背景写真を選択", systemImage: "photo.on.rectangle")
@@ -608,7 +1040,7 @@ struct ClockSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SecondClock Pro")
                                 .font(.headline)
-                            Text("無制限プリセット・写真背景・限定デザインを解放")
+                            Text("背景アニメーション・無制限プリセット・写真背景を解放")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)
@@ -678,6 +1110,95 @@ struct ClockSettingsView: View {
                 }
             }
         )
+    }
+
+    private var nightModeBinding: Binding<ClockNightMode> {
+        Binding(
+            get: { effectivePreferences.nightMode },
+            set: { mode in
+                if mode.requiresPro && !purchaseManager.isProUnlocked {
+                    showsPaywall = true
+                } else {
+                    settingsStore.preferences.nightMode = mode
+                }
+            }
+        )
+    }
+
+    private var scheduleEnabledBinding: Binding<Bool> {
+        Binding(
+            get: {
+                purchaseManager.isProUnlocked && settingsStore.presetSchedule.isEnabled
+            },
+            set: { isEnabled in
+                if isEnabled && !purchaseManager.isProUnlocked {
+                    showsPaywall = true
+                } else if isEnabled {
+                    settingsStore.enablePresetSchedule()
+                } else {
+                    settingsStore.presetSchedule.isEnabled = false
+                }
+            }
+        )
+    }
+
+    private func schedulePresetBinding(isDay: Bool) -> Binding<UUID?> {
+        Binding(
+            get: {
+                isDay
+                    ? settingsStore.presetSchedule.dayPresetID
+                    : settingsStore.presetSchedule.nightPresetID
+            },
+            set: { id in
+                if isDay {
+                    settingsStore.presetSchedule.dayPresetID = id
+                } else {
+                    settingsStore.presetSchedule.nightPresetID = id
+                }
+            }
+        )
+    }
+
+    private func scheduleTimeBinding(isDay: Bool) -> Binding<Date> {
+        Binding(
+            get: {
+                dateForMinutes(
+                    isDay
+                        ? settingsStore.presetSchedule.dayStartMinutes
+                        : settingsStore.presetSchedule.nightStartMinutes
+                )
+            },
+            set: { date in
+                let minutes = minutesForDate(date)
+                if isDay {
+                    settingsStore.presetSchedule.dayStartMinutes = minutes
+                } else {
+                    settingsStore.presetSchedule.nightStartMinutes = minutes
+                }
+            }
+        )
+    }
+
+    private func timeBinding(
+        for keyPath: WritableKeyPath<ClockPreferences, Int>
+    ) -> Binding<Date> {
+        Binding(
+            get: { dateForMinutes(settingsStore.preferences[keyPath: keyPath]) },
+            set: { settingsStore.preferences[keyPath: keyPath] = minutesForDate($0) }
+        )
+    }
+
+    private func dateForMinutes(_ minutes: Int) -> Date {
+        Calendar.autoupdatingCurrent.date(
+            byAdding: .minute,
+            value: min(max(minutes, 0), 1_439),
+            to: Calendar.autoupdatingCurrent.startOfDay(for: .now)
+        ) ?? .now
+    }
+
+    private func minutesForDate(_ date: Date) -> Int {
+        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
     private func selectFontDesign(_ design: ClockFontDesign) {

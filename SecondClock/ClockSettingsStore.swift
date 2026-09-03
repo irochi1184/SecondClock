@@ -11,13 +11,22 @@ final class ClockSettingsStore: ObservableObject {
         }
     }
 
+    @Published var presetSchedule: ClockPresetSchedule {
+        didSet {
+            SharedClockStorage.savePresetSchedule(presetSchedule)
+            scheduleWidgetReload()
+        }
+    }
+
     @Published private(set) var presets: [ClockPreset]
     @Published private(set) var activePresetID: UUID
     @Published private(set) var backgroundImageRevision = UUID()
     private var isSwitchingPreset = false
+    private var widgetReloadTask: Task<Void, Never>?
 
     init() {
         let collection = SharedClockStorage.loadPresetCollection()
+        presetSchedule = SharedClockStorage.loadPresetSchedule()
         presets = collection.presets
         activePresetID = collection.activePresetID
         preferences = collection.activePreferences
@@ -31,10 +40,57 @@ final class ClockSettingsStore: ObservableObject {
         presets.first(where: { $0.id == activePresetID })?.name ?? "プリセット"
     }
 
-    func effectivePreferences(isProUnlocked: Bool) -> ClockPreferences {
-        preferences.applying(
+    func effectivePreferences(
+        isProUnlocked: Bool,
+        at date: Date = .now
+    ) -> ClockPreferences {
+        preferencesForDisplay(isProUnlocked: isProUnlocked, at: date).applying(
             accessLevel: ClockAccessLevel(isProUnlocked: isProUnlocked)
         )
+    }
+
+    func effectivePresetID(isProUnlocked: Bool, at date: Date = .now) -> UUID {
+        guard isProUnlocked,
+              let scheduledID = presetSchedule.presetID(at: date),
+              presets.contains(where: { $0.id == scheduledID })
+        else {
+            return activePresetID
+        }
+        return scheduledID
+    }
+
+    func effectivePresetName(isProUnlocked: Bool, at date: Date = .now) -> String {
+        let id = effectivePresetID(isProUnlocked: isProUnlocked, at: date)
+        return presets.first(where: { $0.id == id })?.name ?? activePresetName
+    }
+
+    func enablePresetSchedule() {
+        if presetSchedule.dayPresetID == nil {
+            presetSchedule.dayPresetID = activePresetID
+        }
+        if presetSchedule.nightPresetID == nil {
+            presetSchedule.nightPresetID = presets.count > 1
+                ? presets[1].id
+                : activePresetID
+        }
+        presetSchedule.isEnabled = true
+    }
+
+    func reloadFromSharedStorage() {
+        let collection = SharedClockStorage.loadPresetCollection()
+        let storedSchedule = SharedClockStorage.loadPresetSchedule()
+
+        if collection.presets != presets || collection.activePresetID != activePresetID {
+            isSwitchingPreset = true
+            presets = collection.presets
+            activePresetID = collection.activePresetID
+            preferences = collection.activePreferences
+            isSwitchingPreset = false
+        }
+
+        if storedSchedule != presetSchedule {
+            presetSchedule = storedSchedule
+        }
     }
 
     func selectPreset(id: UUID) {
@@ -91,6 +147,12 @@ final class ClockSettingsStore: ObservableObject {
         }
 
         presets.remove(at: currentIndex)
+        if presetSchedule.dayPresetID == activePresetID {
+            presetSchedule.dayPresetID = nil
+        }
+        if presetSchedule.nightPresetID == activePresetID {
+            presetSchedule.nightPresetID = nil
+        }
         let nextIndex = min(currentIndex, presets.count - 1)
         let nextPreset = presets[nextIndex]
 
@@ -137,6 +199,7 @@ final class ClockSettingsStore: ObservableObject {
         presets = collection.presets
         activePresetID = collection.activePresetID
         preferences = collection.activePreferences
+        presetSchedule = .default
         isSwitchingPreset = false
         persistPresetCollection()
     }
@@ -150,6 +213,14 @@ final class ClockSettingsStore: ObservableObject {
         persistPresetCollection()
     }
 
+    private func preferencesForDisplay(
+        isProUnlocked: Bool,
+        at date: Date
+    ) -> ClockPreferences {
+        let id = effectivePresetID(isProUnlocked: isProUnlocked, at: date)
+        return presets.first(where: { $0.id == id })?.preferences ?? preferences
+    }
+
     private func persistPresetCollection() {
         SharedClockStorage.savePresetCollection(
             ClockPresetCollection(
@@ -157,7 +228,16 @@ final class ClockSettingsStore: ObservableObject {
                 activePresetID: activePresetID
             )
         )
-        WidgetCenter.shared.reloadTimelines(ofKind: SharedClockStorage.widgetKind)
+        scheduleWidgetReload()
+    }
+
+    private func scheduleWidgetReload() {
+        widgetReloadTask?.cancel()
+        widgetReloadTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            WidgetCenter.shared.reloadTimelines(ofKind: SharedClockStorage.widgetKind)
+        }
     }
 
     private func nextPresetName() -> String {

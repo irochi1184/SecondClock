@@ -35,12 +35,36 @@ extension ClockBackgroundStyle {
     }
 }
 
+extension ClockLayoutStyle {
+    var requiresPro: Bool {
+        switch self {
+        case .classic, .secondsFocus:
+            false
+        case .flip, .secondsRing:
+            true
+        }
+    }
+}
+
+extension ClockNightMode {
+    var requiresPro: Bool {
+        self == .scheduled
+    }
+}
+
 extension ClockPreferences {
     func applying(accessLevel: ClockAccessLevel) -> ClockPreferences {
         guard accessLevel == .free else { return self }
 
         var effective = self
         effective.gradientStyle = .diagonalDown
+        effective.backgroundMotion = .none
+        if effective.layoutStyle.requiresPro {
+            effective.layoutStyle = .classic
+        }
+        if effective.nightMode.requiresPro {
+            effective.nightMode = .off
+        }
 
         switch effective.backgroundStyle {
         case .system, .solid, .gradient:
@@ -120,6 +144,18 @@ enum ClockThemePreset: String, CaseIterable, Identifiable {
         updated.gradientStartColor = colors[0]
         updated.gradientEndColor = colors[1]
         updated.textColor = .white
+        updated.backgroundMotion = backgroundMotion
         return updated
+    }
+
+    private var backgroundMotion: ClockBackgroundMotion {
+        switch self {
+        case .aurora, .sakura:
+            .aurora
+        case .ocean:
+            .waves
+        case .sunset, .nightSky:
+            .flowingGradient
+        }
     }
 }

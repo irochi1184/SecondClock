@@ -11,9 +11,9 @@
 ## App Store表示情報
 
 - 表示名：`SecondClock Pro`
-- 説明：`無制限プリセット・写真背景・限定デザインを解放`
+- 説明：`アニメ背景・時計デザイン・自動切替を解放`
 - 英語表示名：`SecondClock Pro`
-- 英語説明：`Unlock unlimited presets, photos, and themes.`
+- 英語説明：`Animations, faces, schedules, and photos.`
 
 ## Review Notes
 
@@ -25,7 +25,7 @@ Access steps:
 3. Tap the “SecondClock Pro” card.
 4. The purchase button and “購入を復元” (Restore Purchases) button are shown on the paywall.
 
-Pro unlocks unlimited presets, five gradient styles, photo backgrounds, photo dimming controls, three exclusive themes (Sunset, Sakura, and Night Sky), and photo backgrounds on Home Screen widgets. Free users can create up to three presets.
+Pro unlocks three continuously animated in-app backgrounds (flowing gradient, aurora, and waves), flip and seconds-ring clock faces, unlimited presets, scheduled day/night preset switching, scheduled OLED night mode, per-widget fixed presets, five gradient styles, photo backgrounds, photo dimming controls, three exclusive themes, and matching static backgrounds on widgets. Free users can create up to three presets and switch the active preset with widget buttons. Widget backgrounds remain static because WidgetKit doesn't support continuously running decorative animation.
 
 No account or sign-in is required. The review screenshot is `AppStore/Review/iap-review.png`.
 

@@ -43,6 +43,49 @@ enum ClockDisplaySize: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ClockLayoutStyle: String, Codable, CaseIterable, Identifiable {
+    case classic
+    case secondsFocus
+    case flip
+    case secondsRing
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .classic: "クラシック"
+        case .secondsFocus: "秒を強調"
+        case .flip: "フリップ"
+        case .secondsRing: "秒リング"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .classic: "clock"
+        case .secondsFocus: "textformat.size.larger"
+        case .flip: "rectangle.split.3x1"
+        case .secondsRing: "circle.dotted.circle"
+        }
+    }
+}
+
+enum ClockNightMode: String, Codable, CaseIterable, Identifiable {
+    case off
+    case on
+    case scheduled
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off: "オフ"
+        case .on: "オン"
+        case .scheduled: "時間指定"
+        }
+    }
+}
+
 enum ClockGradientStyle: String, Codable, CaseIterable, Identifiable {
     case diagonalDown
     case diagonalUp
@@ -59,6 +102,24 @@ enum ClockGradientStyle: String, Codable, CaseIterable, Identifiable {
         case .horizontal: "左 → 右"
         case .vertical: "上 → 下"
         case .radial: "中央 → 外側"
+        }
+    }
+}
+
+enum ClockBackgroundMotion: String, Codable, CaseIterable, Identifiable {
+    case none
+    case flowingGradient
+    case aurora
+    case waves
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none: "静止"
+        case .flowingGradient: "流れるグラデーション"
+        case .aurora: "オーロラ"
+        case .waves: "波"
         }
     }
 }
@@ -159,6 +220,7 @@ struct RGBAColor: Codable, Equatable {
 struct ClockPreferences: Codable, Equatable {
     var showDate: Bool
     var displaySize: ClockDisplaySize
+    var layoutStyle: ClockLayoutStyle
     var fontDesign: ClockFontDesign
     var fontWeight: ClockFontWeight
     var textColor: RGBAColor
@@ -167,11 +229,21 @@ struct ClockPreferences: Codable, Equatable {
     var gradientStartColor: RGBAColor
     var gradientEndColor: RGBAColor
     var gradientStyle: ClockGradientStyle
+    var backgroundMotion: ClockBackgroundMotion
+    var animationSpeed: Double
+    var animationIntensity: Double
     var photoDimming: Double
+    var keepsScreenAwake: Bool
+    var nightMode: ClockNightMode
+    var nightStartMinutes: Int
+    var nightEndMinutes: Int
+    var nightTextIntensity: Double
+    var burnInProtection: Bool
 
     static let `default` = ClockPreferences(
         showDate: true,
         displaySize: .medium,
+        layoutStyle: .classic,
         fontDesign: .rounded,
         fontWeight: .medium,
         textColor: .white,
@@ -180,12 +252,22 @@ struct ClockPreferences: Codable, Equatable {
         gradientStartColor: .indigo,
         gradientEndColor: .blue,
         gradientStyle: .diagonalDown,
-        photoDimming: 0.28
+        backgroundMotion: .flowingGradient,
+        animationSpeed: 1,
+        animationIntensity: 0.65,
+        photoDimming: 0.28,
+        keepsScreenAwake: true,
+        nightMode: .off,
+        nightStartMinutes: 22 * 60,
+        nightEndMinutes: 7 * 60,
+        nightTextIntensity: 0.55,
+        burnInProtection: true
     )
 
     private enum CodingKeys: String, CodingKey {
         case showDate
         case displaySize
+        case layoutStyle
         case fontDesign
         case fontWeight
         case textColor
@@ -194,12 +276,22 @@ struct ClockPreferences: Codable, Equatable {
         case gradientStartColor
         case gradientEndColor
         case gradientStyle
+        case backgroundMotion
+        case animationSpeed
+        case animationIntensity
         case photoDimming
+        case keepsScreenAwake
+        case nightMode
+        case nightStartMinutes
+        case nightEndMinutes
+        case nightTextIntensity
+        case burnInProtection
     }
 
     init(
         showDate: Bool,
         displaySize: ClockDisplaySize,
+        layoutStyle: ClockLayoutStyle = .classic,
         fontDesign: ClockFontDesign,
         fontWeight: ClockFontWeight,
         textColor: RGBAColor,
@@ -208,10 +300,20 @@ struct ClockPreferences: Codable, Equatable {
         gradientStartColor: RGBAColor,
         gradientEndColor: RGBAColor,
         gradientStyle: ClockGradientStyle,
-        photoDimming: Double
+        backgroundMotion: ClockBackgroundMotion = .flowingGradient,
+        animationSpeed: Double = 1,
+        animationIntensity: Double = 0.65,
+        photoDimming: Double,
+        keepsScreenAwake: Bool = true,
+        nightMode: ClockNightMode = .off,
+        nightStartMinutes: Int = 22 * 60,
+        nightEndMinutes: Int = 7 * 60,
+        nightTextIntensity: Double = 0.55,
+        burnInProtection: Bool = true
     ) {
         self.showDate = showDate
         self.displaySize = displaySize
+        self.layoutStyle = layoutStyle
         self.fontDesign = fontDesign
         self.fontWeight = fontWeight
         self.textColor = textColor
@@ -220,7 +322,16 @@ struct ClockPreferences: Codable, Equatable {
         self.gradientStartColor = gradientStartColor
         self.gradientEndColor = gradientEndColor
         self.gradientStyle = gradientStyle
+        self.backgroundMotion = backgroundMotion
+        self.animationSpeed = animationSpeed
+        self.animationIntensity = animationIntensity
         self.photoDimming = photoDimming
+        self.keepsScreenAwake = keepsScreenAwake
+        self.nightMode = nightMode
+        self.nightStartMinutes = nightStartMinutes
+        self.nightEndMinutes = nightEndMinutes
+        self.nightTextIntensity = nightTextIntensity
+        self.burnInProtection = burnInProtection
     }
 
     init(from decoder: Decoder) throws {
@@ -231,6 +342,8 @@ struct ClockPreferences: Codable, Equatable {
             ?? defaults.showDate
         displaySize = try values.decodeIfPresent(ClockDisplaySize.self, forKey: .displaySize)
             ?? defaults.displaySize
+        layoutStyle = try values.decodeIfPresent(ClockLayoutStyle.self, forKey: .layoutStyle)
+            ?? defaults.layoutStyle
         fontDesign = try values.decodeIfPresent(ClockFontDesign.self, forKey: .fontDesign)
             ?? defaults.fontDesign
         fontWeight = try values.decodeIfPresent(ClockFontWeight.self, forKey: .fontWeight)
@@ -247,14 +360,37 @@ struct ClockPreferences: Codable, Equatable {
             ?? defaults.gradientEndColor
         gradientStyle = try values.decodeIfPresent(ClockGradientStyle.self, forKey: .gradientStyle)
             ?? defaults.gradientStyle
+        backgroundMotion = try values.decodeIfPresent(
+            ClockBackgroundMotion.self,
+            forKey: .backgroundMotion
+        ) ?? defaults.backgroundMotion
+        animationSpeed = try values.decodeIfPresent(Double.self, forKey: .animationSpeed)
+            ?? defaults.animationSpeed
+        animationIntensity = try values.decodeIfPresent(
+            Double.self,
+            forKey: .animationIntensity
+        ) ?? defaults.animationIntensity
         photoDimming = try values.decodeIfPresent(Double.self, forKey: .photoDimming)
             ?? defaults.photoDimming
+        keepsScreenAwake = try values.decodeIfPresent(Bool.self, forKey: .keepsScreenAwake)
+            ?? defaults.keepsScreenAwake
+        nightMode = try values.decodeIfPresent(ClockNightMode.self, forKey: .nightMode)
+            ?? defaults.nightMode
+        nightStartMinutes = try values.decodeIfPresent(Int.self, forKey: .nightStartMinutes)
+            ?? defaults.nightStartMinutes
+        nightEndMinutes = try values.decodeIfPresent(Int.self, forKey: .nightEndMinutes)
+            ?? defaults.nightEndMinutes
+        nightTextIntensity = try values.decodeIfPresent(Double.self, forKey: .nightTextIntensity)
+            ?? defaults.nightTextIntensity
+        burnInProtection = try values.decodeIfPresent(Bool.self, forKey: .burnInProtection)
+            ?? defaults.burnInProtection
     }
 
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(showDate, forKey: .showDate)
         try values.encode(displaySize, forKey: .displaySize)
+        try values.encode(layoutStyle, forKey: .layoutStyle)
         try values.encode(fontDesign, forKey: .fontDesign)
         try values.encode(fontWeight, forKey: .fontWeight)
         try values.encode(textColor, forKey: .textColor)
@@ -263,7 +399,35 @@ struct ClockPreferences: Codable, Equatable {
         try values.encode(gradientStartColor, forKey: .gradientStartColor)
         try values.encode(gradientEndColor, forKey: .gradientEndColor)
         try values.encode(gradientStyle, forKey: .gradientStyle)
+        try values.encode(backgroundMotion, forKey: .backgroundMotion)
+        try values.encode(animationSpeed, forKey: .animationSpeed)
+        try values.encode(animationIntensity, forKey: .animationIntensity)
         try values.encode(photoDimming, forKey: .photoDimming)
+        try values.encode(keepsScreenAwake, forKey: .keepsScreenAwake)
+        try values.encode(nightMode, forKey: .nightMode)
+        try values.encode(nightStartMinutes, forKey: .nightStartMinutes)
+        try values.encode(nightEndMinutes, forKey: .nightEndMinutes)
+        try values.encode(nightTextIntensity, forKey: .nightTextIntensity)
+        try values.encode(burnInProtection, forKey: .burnInProtection)
+    }
+
+    func isNightModeActive(at date: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        switch nightMode {
+        case .off:
+            return false
+        case .on:
+            return true
+        case .scheduled:
+            let components = calendar.dateComponents([.hour, .minute], from: date)
+            let minutes = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+            let start = min(max(nightStartMinutes, 0), 1_439)
+            let end = min(max(nightEndMinutes, 0), 1_439)
+
+            if start < end {
+                return minutes >= start && minutes < end
+            }
+            return minutes >= start || minutes < end
+        }
     }
 }
 
@@ -296,5 +460,38 @@ struct ClockPresetCollection: Codable, Equatable {
         presets.first(where: { $0.id == activePresetID })?.preferences
             ?? presets.first?.preferences
             ?? .default
+    }
+}
+
+struct ClockPresetSchedule: Codable, Equatable {
+    var isEnabled: Bool
+    var dayPresetID: UUID?
+    var nightPresetID: UUID?
+    var dayStartMinutes: Int
+    var nightStartMinutes: Int
+
+    static let `default` = ClockPresetSchedule(
+        isEnabled: false,
+        dayPresetID: nil,
+        nightPresetID: nil,
+        dayStartMinutes: 7 * 60,
+        nightStartMinutes: 22 * 60
+    )
+
+    func presetID(at date: Date, calendar: Calendar = .autoupdatingCurrent) -> UUID? {
+        guard isEnabled else { return nil }
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let minutes = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+        let dayStart = min(max(dayStartMinutes, 0), 1_439)
+        let nightStart = min(max(nightStartMinutes, 0), 1_439)
+
+        if dayStart < nightStart {
+            return minutes >= dayStart && minutes < nightStart
+                ? dayPresetID
+                : nightPresetID
+        }
+        return minutes >= nightStart && minutes < dayStart
+            ? nightPresetID
+            : dayPresetID
     }
 }

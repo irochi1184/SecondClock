@@ -10,12 +10,12 @@
       "internalID" : "692BDD38-722E-4FBC-8319-6833C0DF3D48",
       "localizations" : [
         {
-          "description" : "無制限プリセット・写真背景・限定デザインを解放",
+          "description" : "アニメ背景・時計デザイン・自動切替を解放",
           "displayName" : "SecondClock Pro",
           "locale" : "ja_JP"
         },
         {
-          "description" : "Unlock unlimited presets, photos, and themes.",
+          "description" : "Animations, faces, schedules, and photos.",
           "displayName" : "SecondClock Pro",
           "locale" : "en_US"
         }

@@ -56,6 +56,25 @@ struct AppStoreScreenshotRootView: View {
         default:
             settingsStore.preferences = .default
         }
+
+        if mode == "clock-flip-landscape" {
+            settingsStore.preferences = ClockThemePreset.nightSky.applying(
+                to: settingsStore.preferences
+            )
+            settingsStore.preferences.layoutStyle = .flip
+            settingsStore.preferences.displaySize = .large
+        } else if mode == "clock-ring-landscape" {
+            settingsStore.preferences = ClockThemePreset.ocean.applying(
+                to: settingsStore.preferences
+            )
+            settingsStore.preferences.layoutStyle = .secondsRing
+            settingsStore.preferences.displaySize = .large
+        } else if mode == "clock-night-landscape" {
+            settingsStore.preferences.layoutStyle = .secondsFocus
+            settingsStore.preferences.nightMode = .on
+            settingsStore.preferences.nightTextIntensity = 0.48
+            settingsStore.preferences.displaySize = .large
+        }
     }
 
     private func requestLandscapeOrientation() {
