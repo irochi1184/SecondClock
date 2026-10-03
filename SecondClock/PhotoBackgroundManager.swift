@@ -1,32 +1,34 @@
 import Foundation
+import ImageIO
 import UIKit
 
 enum PhotoBackgroundManager {
     private static let maximumDimension: CGFloat = 1_600
 
+    /// Decodes straight to a downsampled bitmap. Decoding the full image first
+    /// (e.g. a 48MP photo) needs hundreds of MB and could freeze or crash the app.
+    /// Safe to call off the main thread.
     static func optimizedJPEGData(from data: Data) throws -> Data {
-        guard let image = UIImage(data: data) else {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw PhotoBackgroundError.invalidImage
         }
 
-        let originalSize = image.size
-        let longestSide = max(originalSize.width, originalSize.height)
-        let scale = min(1, maximumDimension / longestSide)
-        let targetSize = CGSize(
-            width: max(1, floor(originalSize.width * scale)),
-            height: max(1, floor(originalSize.height * scale))
-        )
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumDimension
+        ]
 
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-
-        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-        let resizedImage = renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else {
+            throw PhotoBackgroundError.invalidImage
         }
 
-        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.86) else {
+        guard let jpegData = UIImage(cgImage: image).jpegData(compressionQuality: 0.86) else {
             throw PhotoBackgroundError.encodingFailed
         }
 

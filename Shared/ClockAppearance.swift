@@ -92,18 +92,22 @@ private struct GradientClockBackground: View {
     }
 
     private func phase(at date: Date) -> Double {
+        // Radians per second at speed 1.0. Earlier rates (0.085–0.18) took
+        // 35–75 seconds per cycle and read as a still image on device.
         let baseRate: Double
         switch preferences.backgroundMotion {
         case .none: baseRate = 0
-        case .flowingGradient: baseRate = 0.12
-        case .aurora: baseRate = 0.085
-        case .waves: baseRate = 0.18
+        case .flowingGradient: baseRate = 0.4
+        case .aurora: baseRate = 0.3
+        case .waves: baseRate = 0.55
         }
 
-        return (date.timeIntervalSinceReferenceDate
-            * baseRate
-            * min(max(preferences.animationSpeed, 0.5), 2))
-            .truncatingRemainder(dividingBy: .pi * 2)
+        // Keep the phase continuous. Wrapping it at 2π made every layer that
+        // multiplies the phase by a non-integer factor jump once per cycle.
+        // A day-long window keeps the value small enough for full precision.
+        let elapsed = date.timeIntervalSinceReferenceDate
+            .truncatingRemainder(dividingBy: 86_400)
+        return elapsed * baseRate * min(max(preferences.animationSpeed, 0.5), 2)
     }
 }
 

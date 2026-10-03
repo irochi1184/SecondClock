@@ -163,8 +163,10 @@ final class ClockSettingsStore: ObservableObject {
         persistPresetCollection()
     }
 
-    func saveBackgroundImage(_ originalData: Data) throws {
-        let optimizedData = try PhotoBackgroundManager.optimizedJPEGData(from: originalData)
+    func saveBackgroundImage(_ originalData: Data) async throws {
+        let optimizedData = try await Task.detached(priority: .userInitiated) {
+            try PhotoBackgroundManager.optimizedJPEGData(from: originalData)
+        }.value
         try SharedClockStorage.saveBackgroundImageData(optimizedData)
         backgroundImageRevision = UUID()
 

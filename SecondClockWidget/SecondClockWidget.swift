@@ -1,9 +1,58 @@
 import SwiftUI
 import WidgetKit
 
+/// Widgets cannot run a per-second clock, so the seconds come from a system
+/// timer. A timer shorter than an hour renders as "M:SS" (no leading zero on
+/// the minutes), so the hour — and the minute's tens digit for the first ten
+/// minutes — is a fixed prefix, and the timeline switches segment at :00 and :10.
+/// This keeps the widget in the app's zero-padded "HH:MM:SS" format, including
+/// the 0 o'clock hour that a timer counting from midnight showed as "12:34".
+struct ClockTimeSegment: Equatable {
+    let prefix: String
+    let timerInterval: ClosedRange<Date>
+
+    init(containing date: Date, calendar: Calendar = .autoupdatingCurrent) {
+        let hourStart = calendar.dateInterval(of: .hour, for: date)?.start ?? date
+        let hourEnd = calendar.date(byAdding: .hour, value: 1, to: hourStart)
+            ?? hourStart.addingTimeInterval(3_600)
+        let tenMinutes = hourStart.addingTimeInterval(600)
+        let hour = calendar.component(.hour, from: date)
+        let isFirstTenMinutes = date < tenMinutes
+
+        prefix = String(format: "%02d:", hour) + (isFirstTenMinutes ? "0" : "")
+        // Stop one second before the next segment so a late entry switch shows
+        // a briefly frozen time rather than a malformed one like "09:010:00".
+        let segmentEnd = (isFirstTenMinutes ? tenMinutes : hourEnd).addingTimeInterval(-1)
+        timerInterval = hourStart...max(hourStart, segmentEnd)
+    }
+
+    /// Segment boundaries (every :00 and :10) in the given range.
+    static func boundaries(
+        after start: Date,
+        through end: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Date] {
+        guard var hourStart = calendar.dateInterval(of: .hour, for: start)?.start else {
+            return []
+        }
+        var dates: [Date] = []
+        while hourStart <= end {
+            for boundary in [hourStart, hourStart.addingTimeInterval(600)]
+                where boundary > start && boundary <= end {
+                dates.append(boundary)
+            }
+            guard let next = calendar.date(byAdding: .hour, value: 1, to: hourStart) else {
+                break
+            }
+            hourStart = next
+        }
+        return dates
+    }
+}
+
 struct ClockTimelineEntry: TimelineEntry {
     let date: Date
-    let startOfDay: Date
+    let timeSegment: ClockTimeSegment
     let preferences: ClockPreferences
     let backgroundImageRevision: Date?
     let presetName: String
@@ -13,7 +62,6 @@ struct ClockTimelineEntry: TimelineEntry {
 
     init(
         date: Date,
-        startOfDay: Date,
         preferences: ClockPreferences,
         backgroundImageRevision: Date? = nil,
         presetName: String = "プリセット",
@@ -22,7 +70,7 @@ struct ClockTimelineEntry: TimelineEntry {
         scheduleIsActive: Bool = false
     ) {
         self.date = date
-        self.startOfDay = startOfDay
+        self.timeSegment = ClockTimeSegment(containing: date)
         self.preferences = preferences
         self.backgroundImageRevision = backgroundImageRevision
         self.presetName = presetName
@@ -39,7 +87,6 @@ struct SecondClockTimelineProvider: AppIntentTimelineProvider {
         let now = Date()
         return ClockTimelineEntry(
             date: now,
-            startOfDay: Calendar.current.startOfDay(for: now),
             preferences: .default
         )
     }
@@ -83,7 +130,6 @@ struct SecondClockTimelineProvider: AppIntentTimelineProvider {
 
         return ClockTimelineEntry(
             date: date,
-            startOfDay: calendar.startOfDay(for: date),
             preferences: preferences,
             backgroundImageRevision: backgroundImageRevision(for: preferences),
             presetName: preset.name,
@@ -98,6 +144,10 @@ struct SecondClockTimelineProvider: AppIntentTimelineProvider {
     private func timelineDates(from now: Date, calendar: Calendar) -> [Date] {
         let collection = SharedClockStorage.loadPresetCollection()
         let schedule = SharedClockStorage.loadPresetSchedule()
+        // The time display needs an entry at every :00 and :10, so the timeline
+        // covers one day and is then reloaded.
+        let horizon = calendar.date(byAdding: .day, value: 1, to: now)
+            ?? now.addingTimeInterval(86_400)
         var transitionMinutes: Set<Int> = [0]
 
         if schedule.isEnabled && SharedClockStorage.isProEntitlementCached {
@@ -112,7 +162,8 @@ struct SecondClockTimelineProvider: AppIntentTimelineProvider {
 
         let today = calendar.startOfDay(for: now)
         var dates: Set<Date> = [now]
-        for dayOffset in 0...7 {
+        dates.formUnion(ClockTimeSegment.boundaries(after: now, through: horizon, calendar: calendar))
+        for dayOffset in 0...1 {
             guard let day = calendar.date(byAdding: .day, value: dayOffset, to: today) else {
                 continue
             }
@@ -121,7 +172,7 @@ struct SecondClockTimelineProvider: AppIntentTimelineProvider {
                     byAdding: .minute,
                     value: min(max(minutes, 0), 1_439),
                     to: day
-                ), transition > now
+                ), transition > now, transition <= horizon
                 else {
                     continue
                 }
@@ -174,7 +225,10 @@ struct SecondClockWidgetView: View {
                 .lineLimit(1)
             }
 
-            Text(entry.startOfDay, style: .timer)
+            (
+                Text(entry.timeSegment.prefix)
+                    + Text(timerInterval: entry.timeSegment.timerInterval, countsDown: false)
+            )
                 .font(
                     .system(
                         size: timeFontSize,
@@ -280,7 +334,6 @@ struct SecondClockWidget: Widget {
     let now = Date()
     ClockTimelineEntry(
         date: now,
-        startOfDay: Calendar.current.startOfDay(for: now),
         preferences: .default
     )
 }
@@ -291,7 +344,6 @@ struct SecondClockWidget: Widget {
     let now = Date()
     ClockTimelineEntry(
         date: now,
-        startOfDay: Calendar.current.startOfDay(for: now),
         preferences: .default
     )
 }

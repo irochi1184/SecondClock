@@ -71,6 +71,9 @@ struct ContentView: View {
                         Spacer()
 
                         Button {
+                            // While the Pro schedule shows a different preset, edit
+                            // the one on screen so changes are visible immediately.
+                            settingsStore.selectPreset(id: displayedPresetID)
                             showsSettings = true
                         } label: {
                             Image(systemName: "gearshape.fill")
@@ -474,6 +477,7 @@ private struct FlipClockUnit: View {
 
 struct ClockSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var settingsStore: ClockSettingsStore
     @EnvironmentObject private var purchaseManager: PurchaseManager
     @State private var selectedPhoto: PhotosPickerItem?
@@ -481,6 +485,7 @@ struct ClockSettingsView: View {
     @State private var showsResetConfirmation = false
     @State private var showsPresetDeleteConfirmation = false
     @State private var showsPaywall = false
+    @State private var isImportingPhoto = false
 
     private var effectivePreferences: ClockPreferences {
         settingsStore.preferences.applying(
@@ -496,6 +501,19 @@ struct ClockSettingsView: View {
                 VStack(spacing: 20) {
                     if shouldShowAppGroupWarning {
                         AppGroupWarning()
+                    }
+
+                    if let scheduledPresetName {
+                        ScheduledPresetNotice(
+                            displayedName: scheduledPresetName,
+                            editingName: settingsStore.activePresetName
+                        ) {
+                            settingsStore.selectPreset(
+                                id: settingsStore.effectivePresetID(
+                                    isProUnlocked: purchaseManager.isProUnlocked
+                                )
+                            )
+                        }
                     }
 
                     displaySection
@@ -539,10 +557,12 @@ struct ClockSettingsView: View {
                 isPresented: $showsResetConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("初期状態に戻す", role: .destructive) {
+                Button("すべて削除して初期状態に戻す", role: .destructive) {
                     settingsStore.restoreDefaults()
                 }
                 Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("すべてのプリセット（\(settingsStore.presets.count)件）、背景写真、プリセットの自動切替設定が削除されます。この操作は取り消せません。")
             }
             .confirmationDialog(
                 "「\(settingsStore.activePresetName)」を削除しますか？",
@@ -560,6 +580,18 @@ struct ClockSettingsView: View {
                     .presentationDragIndicator(.visible)
             }
         }
+    }
+
+    /// Name of the preset the schedule is showing, when it differs from the
+    /// preset being edited (edits would otherwise not appear on screen).
+    private var scheduledPresetName: String? {
+        let displayedID = settingsStore.effectivePresetID(
+            isProUnlocked: purchaseManager.isProUnlocked
+        )
+        guard displayedID != settingsStore.activePresetID else { return nil }
+        return settingsStore.effectivePresetName(
+            isProUnlocked: purchaseManager.isProUnlocked
+        )
     }
 
     private var shouldShowAppGroupWarning: Bool {
@@ -936,6 +968,15 @@ struct ClockSettingsView: View {
                         Text("アプリでは常時動き、ウィジェットには同じデザインの静止状態を表示します。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+
+                        if reduceMotion {
+                            Label(
+                                "iPhoneの「視差効果を減らす」がオンのため、背景アニメーションを停止しています。設定アプリ › アクセシビリティ › 動作 から変更できます。",
+                                systemImage: "pause.circle"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        }
                     }
                 } else {
                     LockedSettingButton(title: "背景アニメーションを設定") {
@@ -949,10 +990,19 @@ struct ClockSettingsView: View {
 
             case .photo:
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("背景写真を選択", systemImage: "photo.on.rectangle")
+                    if isImportingPhoto {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("写真を読み込み中…")
+                        }
                         .frame(maxWidth: .infinity)
+                    } else {
+                        Label("背景写真を選択", systemImage: "photo.on.rectangle")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isImportingPhoto)
                 .onChange(of: selectedPhoto) { _, newItem in
                     guard let newItem else { return }
                     Task { await importPhoto(from: newItem) }
@@ -1234,11 +1284,14 @@ struct ClockSettingsView: View {
             return
         }
 
+        isImportingPhoto = true
+        defer { isImportingPhoto = false }
+
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw PhotoBackgroundError.invalidImage
             }
-            try settingsStore.saveBackgroundImage(data)
+            try await settingsStore.saveBackgroundImage(data)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1378,6 +1431,32 @@ private struct AppGroupWarning: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct ScheduledPresetNotice: View {
+    let displayedName: String
+    let editingName: String
+    let editDisplayedPreset: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text("プリセット自動切替中のため、画面には「\(displayedName)」が表示されています。いま編集しているのは「\(editingName)」です。")
+            } icon: {
+                Image(systemName: "clock.arrow.2.circlepath")
+                    .foregroundStyle(.blue)
+            }
+            .font(.footnote)
+
+            Button("「\(displayedName)」を編集する", action: editDisplayedPreset)
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.blue.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
