@@ -37,11 +37,17 @@ struct ClockBackgroundView: View {
                 ? SharedClockStorage.loadWidgetBackgroundImage()
                 : SharedClockStorage.loadBackgroundImage()
             {
-                Image(uiImage: image)
-                    .resizable()
-                    .preservingFullColorInWidgets()
-                    .scaledToFill()
+                // Keep the photo out of layout: a scaledToFill image reports its
+                // oversized fill size, which would otherwise grow the parent
+                // ZStack past the screen and push the clock and controls offscreen.
+                Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        Image(uiImage: image)
+                            .resizable()
+                            .preservingFullColorInWidgets()
+                            .scaledToFill()
+                    }
                     .clipped()
                     .overlay {
                         Color.black.opacity(preferences.photoDimming)
