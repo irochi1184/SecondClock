@@ -29,26 +29,6 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Group {
-                    if isNightModeActive {
-                        Color.black
-                    } else {
-                        ClockBackgroundView(
-                            preferences: effectivePreferences,
-                            animatesBackground: true
-                        )
-                    }
-                }
-                    .id(settingsStore.backgroundImageRevision)
-                    .id(
-                        settingsStore.effectivePresetID(
-                            isProUnlocked: purchaseManager.isProUnlocked,
-                            at: currentDate
-                        )
-                    )
-                    .transition(.opacity)
-                    .ignoresSafeArea()
-
                 FullScreenClockView(
                     preferences: effectivePreferences,
                     isNightModeActive: isNightModeActive
@@ -97,6 +77,30 @@ struct ContentView: View {
                 if settingsStore.presets.count > 1 && !showsSettings {
                     presetIndicator
                 }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            // Backgrounds live in .background so their size (e.g. a large
+            // photo) can never stretch the layout and push controls offscreen.
+            .background {
+                Group {
+                    if isNightModeActive {
+                        Color.black
+                    } else {
+                        ClockBackgroundView(
+                            preferences: effectivePreferences,
+                            animatesBackground: true
+                        )
+                    }
+                }
+                    .id(settingsStore.backgroundImageRevision)
+                    .id(
+                        settingsStore.effectivePresetID(
+                            isProUnlocked: purchaseManager.isProUnlocked,
+                            at: currentDate
+                        )
+                    )
+                    .transition(.opacity)
+                    .ignoresSafeArea()
             }
         }
         .contentShape(Rectangle())
