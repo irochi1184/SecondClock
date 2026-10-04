@@ -68,6 +68,9 @@ struct ContentView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.primary)
+                        // Dim (never hide) in night mode so the only way into
+                        // settings stays reachable without glaring in the dark.
+                        .opacity(isNightModeActive ? 0.28 : 1)
                         .accessibilityLabel("時計の設定を開く")
                         .accessibilityHint("時計を見ながら表示サイズや背景を変更できます")
                     }
@@ -119,7 +122,7 @@ struct ContentView: View {
             ClockSettingsView()
                 .environmentObject(settingsStore)
                 .environmentObject(purchaseManager)
-                .presentationDetents([.fraction(0.5)])
+                .presentationDetents([.fraction(0.5), .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(
                     .enabled(upThrough: .fraction(0.5))
@@ -183,6 +186,7 @@ struct ContentView: View {
         }
         .foregroundStyle(effectivePreferences.textColor.color)
         .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+        .opacity(isNightModeActive ? 0.28 : 1)
         .frame(maxHeight: .infinity, alignment: .bottom)
         .padding(.bottom, 18)
         .allowsHitTesting(false)
@@ -1056,10 +1060,17 @@ struct ClockSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text("SecondClock 1.0.0")
+            Text("SecondClock \(appVersion)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "-"
+        let build = info?["CFBundleVersion"] as? String ?? "-"
+        return "\(version) (\(build))"
     }
 
     private var proStatusCard: some View {
@@ -1275,8 +1286,23 @@ struct ClockSettingsView: View {
         for keyPath: WritableKeyPath<ClockPreferences, RGBAColor>
     ) -> Binding<Color> {
         Binding(
-            get: { settingsStore.preferences[keyPath: keyPath].color },
-            set: { settingsStore.preferences[keyPath: keyPath] = RGBAColor($0) }
+            get: { effectivePreferences[keyPath: keyPath].color },
+            set: { newColor in
+                var updated = settingsStore.preferences
+                // Without Pro a saved photo background is shown as the default
+                // gradient. Adopt what is on screen so the color edit takes effect.
+                let isGradientColor = keyPath == \ClockPreferences.gradientStartColor
+                    || keyPath == \ClockPreferences.gradientEndColor
+                if isGradientColor
+                    && updated.backgroundStyle.requiresPro
+                    && !purchaseManager.isProUnlocked {
+                    updated.backgroundStyle = effectivePreferences.backgroundStyle
+                    updated.gradientStartColor = effectivePreferences.gradientStartColor
+                    updated.gradientEndColor = effectivePreferences.gradientEndColor
+                }
+                updated[keyPath: keyPath] = RGBAColor(newColor)
+                settingsStore.preferences = updated
+            }
         )
     }
 
@@ -1426,7 +1452,7 @@ private struct ThemePresetButton: View {
 private struct AppGroupWarning: View {
     var body: some View {
         Label {
-            Text("App Groupが未設定です。ウィジェットへ設定を共有するには、Xcodeの署名設定を確認してください。")
+            Text("設定をウィジェットと共有できません。アプリを再インストールしても解決しない場合は、サポートページからお問い合わせください。")
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)

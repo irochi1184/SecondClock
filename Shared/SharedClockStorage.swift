@@ -285,7 +285,7 @@ enum SharedClockStorageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .appGroupUnavailable:
-            "App Groupを利用できません。Xcodeの署名設定を確認してください。"
+            "写真を保存できませんでした。アプリを再起動してもう一度お試しください。"
         }
     }
 }
